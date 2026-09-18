@@ -60,3 +60,12 @@
 - Focused checks verified shape parity, project-scoped access, immutable packet detail, and read-only behavior. Browser checks exercised lazy loading, compile response reuse, history/diff, delayed-response selection and project races, recoverable packet-load errors, scoped readers and a 390px layout.
 - All three implementation streams consumed the same workspace contract through exact Loomplane packets and finished caller-reported receipts after a fresh preflight. Internal use remains distinct from customer or model-behavior evidence.
 - Added START_HERE.md to connect the usable product, open-source boundary, enterprise thesis, and next validation work.
+
+### Milestone: one-call task handoff
+
+- Added atomic task start to core, CLI, HTTP SDK, local/remote MCP and workbench. It creates a separate stream, explicit mounts, full packet and caller-reported receipt without changing directory selection or launching a model.
+- Requested capsules must be active, distinct, project-scoped and included in the compiled packet. Conflict, stale derivation and budget failures roll back all created records/events. HTTP/SDK replay keys cover the entire handoff.
+- Added exact packet retrieval to MCP and a two-client walkthrough. Corrected the own-project README path to actually share a capsule across independent tasks.
+- A public-API 6000-node dependency chain exposed recursive call-stack exhaustion. Replaced current-cycle, exact-revision drift and historical-impact recursive walks with explicit traversal stacks, preserving depth-first order and per-consumer findings.
+- Verified two independent CLI/HTTP/MCP starts, full packet delivery, unchanged local selection, scoped denial, idempotent replay, all-or-nothing failure and both original completions blocked after a shared contract revision.
+- Browser verification covered two task handoffs, direct full-packet display, shared-contract drift, both stale completions disabled, recoverable budget failure without a partial stream, scoped readers and a 390px layout.

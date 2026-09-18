@@ -19,6 +19,8 @@ The original conversation-graph assessment is archived. This product is a contex
 
 The open-source runtime includes independent streams, immutable revisions, live/pinned subscriptions, bounded context packets, transitive drift, historical packet comparisons, source fingerprints, explicit imports, portable export/restore and run receipts. It has a workbench, CLI, local/remote-backed MCP, HTTP SDK, project-scoped access keys and a local/shared-server command wrapper. Durable retry keys protect supported shared-server writes from duplication after a lost response.
 
+One atomic task-start call now connects a new independent task to selected shared context and returns its packet and receipt. This works in the terminal, SDK, MCP and workbench; it registers the handoff without launching a model.
+
 The repository has passing CI and published packages. Internal implementation streams used Loomplane's own contract packets and receipts. That is internal use and mechanism evidence; it is not customer validation or proof that a model obeyed a packet.
 
 ## The business

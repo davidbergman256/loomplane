@@ -13,7 +13,7 @@ import type { CapsuleKind, CapsuleStatus } from '../core/types.js';
 const program = new Command()
   .name('loomplane')
   .description('Shared, versioned context for parallel coding agents.')
-  .version('0.3.0')
+  .version('0.4.0')
   .option(
     '--db <path>',
     'SQLite database path',
@@ -129,6 +129,38 @@ program
       }
       return packet;
     }),
+  );
+const tasks = program
+  .command('task')
+  .description('Start independent work with explicit shared context');
+tasks
+  .command('start <name>')
+  .description(
+    'Create a stream, compile selected context and register its exact packet in one transaction',
+  )
+  .option('--project <id>', 'Project; defaults to the local selected project')
+  .requiredOption('--task <text>', 'Work to perform with this context')
+  .requiredOption('--agent <name>', 'Caller-supplied agent label')
+  .requiredOption(
+    '--context <capsuleId>',
+    'Shared capsule to follow; repeat for multiple capsules',
+    (value: string, previous: string[]) => [...previous, value],
+    [] as string[],
+  )
+  .option('--branch <name>', 'Branch label; does not create or switch a Git branch')
+  .option('--budget <tokens>', 'Estimated context budget', '4000')
+  .action((name, opts) =>
+    useStore((store) =>
+      store.startTask({
+        projectId: selectedProject(storePath(), opts.project),
+        name,
+        task: opts.task,
+        agent: opts.agent,
+        branch: opts.branch,
+        budget: number(opts.budget),
+        context: opts.context.map((capsuleId: string) => ({ capsuleId, mode: 'live' as const })),
+      }),
+    ),
   );
 program
   .command('run <command...>')

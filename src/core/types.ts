@@ -318,3 +318,24 @@ export interface SourceCheck {
     actualSha256?: string;
   }[];
 }
+
+/** Explicit inputs for an independent task; does not change a directory's selection. */
+export interface StartTaskInput {
+  projectId: string;
+  name: string;
+  task: string;
+  agent: string;
+  branch?: string;
+  budget?: number;
+  context: Array<{
+    capsuleId: string;
+    mode?: 'live' | 'pinned';
+    pinnedVersion?: number;
+  }>;
+}
+export interface StartedTask {
+  stream: Stream;
+  mounts: Mount[];
+  packet: Packet;
+  receipt: Receipt;
+}

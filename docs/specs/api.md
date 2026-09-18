@@ -83,3 +83,9 @@ Version 0.2 accepts optional `Idempotency-Key` on JSON POST/PATCH writes. A repe
 ## Compact workbench reads
 
 `GET /api/workspace?projectId=ID` and SDK `workspace(projectId?, options?)` return the same current records as the legacy snapshot, with capsules serialized once and stream ownership/mounts referencing their IDs. Latest packets are honest `PacketSummary` values: opening a packet fetches its full immutable detail through the existing packet endpoint. The legacy snapshot contract remains unchanged. Project scoping and reader access match snapshot authorization. See [the workspace contract](workspace-payload.md) and [measured payload comparison](../workspace-payload-results.md).
+
+## Start independent work with explicit context
+
+`POST /api/tasks/start` returns status 201 with a `StartedTask` containing stream, mounts, full packet and receipt. The entire handoff commits atomically; explicit context must fit the packet and pass its tracked-revision preflight. Inputs and limits are in [the task-start contract](task-start.md). Store/SDK `startTask`, CLI `task start`, and MCP `loomplane_start_task` expose this operation. HTTP/SDK callers can use the existing explicit idempotency key for safe network replay. Local/MCP starts create a new task on every successful call.
+
+MCP `loomplane_get_packet` retrieves an exact immutable packet by `packetId` without recompilation. The API/SDK packet getters remain unchanged. Starting a task registers a handoff; it does not execute an agent or prove that its context was consumed.

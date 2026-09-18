@@ -19,6 +19,8 @@ import type {
   ReviseCapsule,
   SearchHit,
   Snapshot,
+  StartedTask,
+  StartTaskInput,
   Stream,
   StreamState,
   WorkspaceSnapshot,
@@ -230,6 +232,10 @@ export class LoomplaneClient {
 
   createStream(input: CreateStream, options?: LoomplaneRequestOptions): Promise<Stream> {
     return this.write('POST', '/streams', input, options);
+  }
+
+  startTask(input: StartTaskInput, options?: LoomplaneRequestOptions): Promise<StartedTask> {
+    return this.write('POST', '/tasks/start', input, options);
   }
 
   getStreamState(streamId: string, options?: LoomplaneRequestOptions): Promise<StreamState> {

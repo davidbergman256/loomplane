@@ -26,10 +26,10 @@ For the product and business overview, start with [the founder brief](START_HERE
 
 Requires **Node.js 24+**. SQLite is bundled with Node; no database service is needed.
 
-Install the [published preview](https://github.com/davidbergman256/loomplane/releases/tag/v0.3.0):
+Install the [published preview](https://github.com/davidbergman256/loomplane/releases/tag/v0.4.0):
 
 ```sh
-npm install -g https://github.com/davidbergman256/loomplane/releases/download/v0.3.0/loomplane-0.3.0.tgz
+npm install -g https://github.com/davidbergman256/loomplane/releases/download/v0.4.0/loomplane-0.4.0.tgz
 loomplane demo
 loomplane serve
 ```
@@ -85,12 +85,16 @@ After `npm link` in the Loomplane checkout, run these from the repository you ar
 ```sh
 loomplane init
 loomplane remember "API amounts are integers" --body "Use amount_minor and currency_exponent."
-loomplane context --task "Build the usage panel"
-loomplane stream create "Frontend" --agent codex
-loomplane use STREAM_ID
+# Copy the capsule ID returned by remember. Each task receives that shared contract.
+loomplane task start "Usage panel" --task "Build the usage panel" --agent codex --context CAPSULE_ID
+loomplane task start "API checks" --task "Check the usage response" --agent claude --context CAPSULE_ID
 ```
 
-`init` selects a project and a first stream in `.loomplane/workspace.json`. `remember` and `context` use that selection, so ordinary work does not require copying project IDs. `use` switches the selected stream. The selection is local and ignored by Git; explicit IDs remain available for automation.
+`init` selects a project and a first stream in `.loomplane/workspace.json`. `remember` publishes into that stream. Each `task start` creates its own stream, follows the explicit shared capsules, compiles a full packet and registers a caller-reported receipt atomically. The JSON result includes the packet text and the exact packet/receipt IDs to retain. It leaves the directory's selected stream unchanged, so parallel tasks do not redirect each other's defaults.
+
+Repeat `--context` to select additional shared capsules. If the requested context cannot fit the budget or its tracked dependencies are stale, the entire start fails without leaving a partial task. `--branch` records a label; it does not change Git branches. The [two-client walkthrough](examples/tasks) shows the complete change-and-check workflow.
+
+For ad hoc work, `context` still compiles the currently selected stream and `use` switches that selection. Use one absolute database path (or one shared server) across worktrees so clients share the same project; each worktree's default relative database is otherwise independent.
 
 ## Use from the terminal
 

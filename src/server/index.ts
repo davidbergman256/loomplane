@@ -191,6 +191,21 @@ export function createLoomplaneServer(store: Store, options: ServerOptions = {})
             }
           }
         };
+        const assertTaskReferences = (input: any) => {
+          if (!Array.isArray(input.context) || input.context.length > 100)
+            throw new LoomplaneError('context must contain from 1 to 100 capsule selections');
+          for (const selection of input.context) {
+            if (
+              !selection ||
+              typeof selection !== 'object' ||
+              Array.isArray(selection) ||
+              typeof selection.capsuleId !== 'string' ||
+              !selection.capsuleId.trim()
+            )
+              throw new LoomplaneError('Invalid task context selection');
+            assertResource('capsules', selection.capsuleId.trim());
+          }
+        };
         if (principal) {
           if (method !== 'GET' && principal.role !== 'writer')
             throw new LoomplaneError('This key is read-only', 403, 'FORBIDDEN');
@@ -212,6 +227,11 @@ export function createLoomplaneServer(store: Store, options: ServerOptions = {})
             }
             if (path === '/api/compile') assertResource('streams', (await requestBody()).streamId);
             if (path === '/api/receipts') assertResource('packets', (await requestBody()).packetId);
+            if (path === '/api/tasks/start') {
+              const input = await requestBody();
+              assertProject(input.projectId);
+              assertTaskReferences(input);
+            }
           }
           if (method === 'PATCH' && /^\/api\/capsules\/[a-zA-Z0-9_-]+$/.test(path))
             assertCapsuleReferences(await requestBody());
@@ -258,7 +278,7 @@ export function createLoomplaneServer(store: Store, options: ServerOptions = {})
         )
           throw new LoomplaneError('Use application/json', 415, 'CONTENT_TYPE');
         if (method === 'GET' && path === '/api/health')
-          return respond(res, 200, { ok: true, version: '0.3.0' });
+          return respond(res, 200, { ok: true, version: '0.4.0' });
         if (method === 'GET' && path === '/api/changes') {
           res.writeHead(200, {
             'Content-Type': 'text/event-stream',
@@ -312,6 +332,8 @@ export function createLoomplaneServer(store: Store, options: ServerOptions = {})
           return await writeJson(201, (input) => store.compile(input));
         if (method === 'POST' && path === '/api/receipts')
           return await writeJson(201, (input) => store.startReceipt(input.packetId, input.agent));
+        if (method === 'POST' && path === '/api/tasks/start')
+          return await writeJson(201, (input) => store.startTask(input));
         if (method === 'GET' && path === '/api/receipts') {
           if (!projectId) throw new LoomplaneError('projectId is required');
           return respond(res, 200, store.listReceipts(projectId));

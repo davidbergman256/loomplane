@@ -57,6 +57,12 @@ credential sees its project but mutation tools return a structured forbidden
 error. Attempts to name another project or its resources return a generic
 not-found response. Operator-provided TLS is required for remote deployment.
 
+## One-call task handoff
+
+For new independent work, `loomplane_start_task` creates a stream, mounts explicit shared capsules, compiles its context and starts a receipt atomically. The tool response contains the complete packet text and exact IDs for later checks. It does not launch an agent. See the [two-client walkthrough](../tasks).
+
+`loomplane_get_packet` retrieves an existing immutable packet without recompiling. Use it when a task already has a packet ID.
+
 ## Agent run workflow
 
 Use the exact packet ID throughout one run:

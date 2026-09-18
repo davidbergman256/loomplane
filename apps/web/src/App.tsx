@@ -478,19 +478,31 @@ export default function App() {
                         Export project
                       </button>
                     ) : (
-                      <button
-                        className="button primary"
-                        disabled={!auth.canWrite}
-                        onClick={() =>
-                          setForm({
-                            type: 'capsule',
-                            ...(streamFilter ? { streamId: streamFilter } : {}),
-                          })
-                        }
-                      >
-                        <Plus size={15} />
-                        Publish capsule
-                      </button>
+                      <div className="heading-actions">
+                        <button
+                          className={`button ${view === 'streams' ? 'secondary' : 'primary'}`}
+                          disabled={!auth.canWrite}
+                          onClick={() =>
+                            setForm({
+                              type: 'capsule',
+                              ...(streamFilter ? { streamId: streamFilter } : {}),
+                            })
+                          }
+                        >
+                          <Plus size={15} />
+                          Publish capsule
+                        </button>
+                        {view === 'streams' && (
+                          <button
+                            className="button primary"
+                            disabled={!auth.canWrite}
+                            onClick={() => setForm({ type: 'task' })}
+                          >
+                            <ArrowRight size={15} />
+                            Start task
+                          </button>
+                        )}
+                      </div>
                     )
                   }
                 />
@@ -666,13 +678,16 @@ export default function App() {
             if (result?.projectId) switchProject(result.projectId);
             if (result?.capsule) setSelection({ type: 'capsule', id: result.capsule.id });
             if (result?.packet) setSelection({ type: 'packet', packet: result.packet });
+            if (result?.startedTask) navigate('streams', result.startedTask.stream.id);
             void refresh(result?.projectId);
             setNotice(
-              result?.packet
-                ? 'Context packet compiled.'
-                : result?.capsule
-                  ? 'Capsule published.'
-                  : 'Workspace updated.',
+              result?.startedTask
+                ? 'Task ready. Context packet and run receipt recorded.'
+                : result?.packet
+                  ? 'Context packet compiled.'
+                  : result?.capsule
+                    ? 'Capsule published.'
+                    : 'Workspace updated.',
             );
           }}
         />

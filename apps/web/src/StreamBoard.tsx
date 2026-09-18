@@ -281,7 +281,7 @@ function StreamLane({
             <span>
               Latest packet
               <small>
-                {latestPacket.capsuleCount} revisions · ~
+                {latestPacket.capsuleCount} revision{latestPacket.capsuleCount === 1 ? '' : 's'} · ~
                 {latestPacket.estimatedTokens.toLocaleString()} tokens
               </small>
             </span>

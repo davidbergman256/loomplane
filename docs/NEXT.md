@@ -8,7 +8,7 @@ The static concept demo now implements the changed-contract scenario, and the re
 
 ## 2. Better context coverage and adoption
 
-Measure the proportion of real tasks that record packets and invoke completion checks. The explicit command runner supplies packet files and checks freshness before recording completion; it does not force a model to read those files. Hooks remain opt-in. Source re-import now updates managed records while preserving local edits as conflicts. Next, exercise two real coding clients and measure actual packet/check coverage.
+Measure the proportion of real tasks that record packets and invoke completion checks. The explicit command runner supplies packet files and checks freshness before recording completion; it does not force a model to read those files. Hooks remain opt-in. Source re-import now updates managed records while preserving local edits as conflicts. Atomic task start now reduces create/mount/compile/register to one call, returning packet text directly to MCP clients. Next, exercise two real coding clients and measure actual packet/check coverage.
 
 ## 3. Explainability under change
 
@@ -16,7 +16,7 @@ Historical packet diffs and bounded packet history are implemented in the core, 
 
 ## 4. Operational foundation
 
-Packet history uses bounded insertion-order pagination, and composite reads now hold a coherent SQLite snapshot across concurrent clients. Version 0.2 adds credential-scoped write replay and a transactional schema-1→2 migration. Extend pagination to other growing lists and test portable compatibility across future versions. The [v0.1 baseline](scaling-baseline.md) measured a 1.83 MB snapshot at 500 capsules/30 streams. Normalized workspace payloads and lazy packet details now reduce that fixture to 590 KB (67.8% smaller); see [the comparison](workspace-payload-results.md). Next, profile repeated per-stream queries before choosing a new database. Replace recursive graph traversal with bounded iterative traversal as larger graphs are supported. Basic safety, backup and scoped credentials stay open source.
+Packet history uses bounded insertion-order pagination, and composite reads now hold a coherent SQLite snapshot across concurrent clients. Version 0.2 adds credential-scoped write replay and a transactional schema-1→2 migration. Extend pagination to other growing lists and test portable compatibility across future versions. The [v0.1 baseline](scaling-baseline.md) measured a 1.83 MB snapshot at 500 capsules/30 streams. Normalized workspace payloads and lazy packet details now reduce that fixture to 590 KB (67.8% smaller); see [the comparison](workspace-payload-results.md). Next, profile repeated per-stream queries before choosing a new database. Core dependency walks now use iterative traversal after a valid 6000-node chain exposed a stack overflow. This removes the call-stack failure; it does not establish a production graph-size or runtime guarantee. Basic safety, backup and scoped credentials stay open source.
 
 ## 5. Enterprise validation
 

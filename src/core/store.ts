@@ -32,6 +32,8 @@ import type {
   WorkspaceSnapshot,
   Stream,
   StreamState,
+  StartTaskInput,
+  StartedTask,
   Receipt,
   PacketCheck,
   ContextDependency,
@@ -349,10 +351,16 @@ export class Store {
     if (ownerId) {
       const seen = new Set<string>();
       const reaches = (capsuleId: string): boolean => {
-        if (capsuleId === ownerId) return true;
-        if (seen.has(capsuleId)) return false;
-        seen.add(capsuleId);
-        return (this.getCapsule(capsuleId).dependencies ?? []).some((d) => reaches(d.capsuleId));
+        const pending = [capsuleId];
+        while (pending.length) {
+          const currentId = pending.pop()!;
+          if (currentId === ownerId) return true;
+          if (seen.has(currentId)) continue;
+          seen.add(currentId);
+          const children = this.getCapsule(currentId).dependencies ?? [];
+          for (let i = children.length - 1; i >= 0; i--) pending.push(children[i].capsuleId);
+        }
+        return false;
       };
       invariant(
         !dependencies.some((d) => reaches(d.capsuleId)),
@@ -366,32 +374,33 @@ export class Store {
   private dependencyDrift(capsule: Capsule, revision: Revision): Drift[] {
     const result: Drift[] = [];
     const seen = new Set<string>();
-    const visit = (current: Revision) => {
-      for (const dep of current.dependencies ?? []) {
-        const key = `${dep.capsuleId}@${dep.version}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        const source = this.getCapsule(dep.capsuleId);
-        if (source.version !== dep.version || source.status !== 'active')
-          result.push({
-            capsuleId: capsule.id,
-            title: capsule.title,
-            compiledVersion: revision.version,
-            currentVersion: capsule.version,
-            reason: 'dependency',
-            pinned: false,
-            dependency: {
-              capsuleId: source.id,
-              title: source.title,
-              expectedVersion: dep.version,
-              currentVersion: source.version,
-              status: source.status,
-            },
-          });
-        visit(this.revision(dep.capsuleId, dep.version));
-      }
-    };
-    visit(revision);
+    // Reverse pushes retain the recursive walk's depth-first dependency-array order.
+    const pending = [...(revision.dependencies ?? [])].reverse();
+    while (pending.length) {
+      const dep = pending.pop()!;
+      const key = `${dep.capsuleId}@${dep.version}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const source = this.getCapsule(dep.capsuleId);
+      if (source.version !== dep.version || source.status !== 'active')
+        result.push({
+          capsuleId: capsule.id,
+          title: capsule.title,
+          compiledVersion: revision.version,
+          currentVersion: capsule.version,
+          reason: 'dependency',
+          pinned: false,
+          dependency: {
+            capsuleId: source.id,
+            title: source.title,
+            expectedVersion: dep.version,
+            currentVersion: source.version,
+            status: source.status,
+          },
+        });
+      const children = this.revision(dep.capsuleId, dep.version).dependencies ?? [];
+      for (let i = children.length - 1; i >= 0; i--) pending.push(children[i]);
+    }
     return result;
   }
   private writeRevision(capsule: Capsule, changeNote: string): void {
@@ -476,6 +485,71 @@ export class Store {
         name: stream.name,
       });
       return stream;
+    });
+  }
+  startTask(input: StartTaskInput): StartedTask {
+    return this.transaction(() => {
+      invariant(input && typeof input === 'object', 'Task input is required');
+      const project = this.getProject(requiredText(input.projectId, 'projectId'));
+      const name = requiredText(input.name, 'name', 120);
+      const task = requiredText(input.task, 'task', 3000);
+      const agent = requiredText(input.agent, 'agent', 120);
+      const branch = optionalText(input.branch, 'branch', 300);
+      invariant(
+        Array.isArray(input.context) && input.context.length >= 1 && input.context.length <= 100,
+        'context must contain 1 to 100 distinct capsule selections',
+      );
+      const context = input.context.map((selection) => {
+        invariant(selection && typeof selection === 'object', 'Invalid context selection');
+        const capsule = this.getCapsule(requiredText(selection.capsuleId, 'context capsuleId'));
+        invariant(
+          capsule.projectId === project.id,
+          'Context belongs to a different project',
+          400,
+          'PROJECT_MISMATCH',
+        );
+        invariant(capsule.status === 'active', 'Task context capsules must be active');
+        const mode = selection.mode ?? 'live';
+        invariant(mode === 'live' || mode === 'pinned', 'Invalid context mode');
+        if (mode === 'pinned') {
+          invariant(
+            Number.isInteger(selection.pinnedVersion) && selection.pinnedVersion! > 0,
+            'Pinned context requires a positive pinnedVersion',
+          );
+          this.revision(capsule.id, selection.pinnedVersion!);
+        } else
+          invariant(
+            selection.pinnedVersion === undefined,
+            'Live context cannot specify pinnedVersion',
+          );
+        return {
+          capsuleId: capsule.id,
+          mode,
+          ...(mode === 'pinned' ? { pinnedVersion: selection.pinnedVersion! } : {}),
+        };
+      });
+      invariant(
+        new Set(context.map((selection) => selection.capsuleId)).size === context.length,
+        'Task context contains duplicate capsules',
+      );
+      const stream = this.createStream({
+        projectId: project.id,
+        name,
+        description: task,
+        agent,
+        branch,
+      });
+      const mounts = context.map((selection) => this.mount({ streamId: stream.id, ...selection }));
+      const packet = this.compile({ streamId: stream.id, task, budget: input.budget });
+      const included = new Set(packet.manifest.map((item) => item.capsuleId));
+      invariant(
+        context.every((selection) => included.has(selection.capsuleId)),
+        'The context budget omitted a requested capsule; increase the budget or select less context',
+        409,
+        'TASK_CONTEXT_OMITTED',
+      );
+      const receipt = this.startReceipt(packet.id, agent);
+      return { stream: this.getStream(stream.id), mounts, packet, receipt };
     });
   }
   updateStream(
@@ -1022,12 +1096,37 @@ export class Store {
         const key = `${id}@${version}`;
         const cached = revisionReferences.get(key);
         if (cached !== undefined) return cached;
-        revisionReferences.set(key, false);
-        const result = (this.revision(id, version).dependencies ?? []).some((d) =>
-          references(d.capsuleId, d.version),
-        );
-        revisionReferences.set(key, result);
-        return result;
+        const frames: { key: string; dependencies: ContextDependency[]; next: number }[] = [];
+        const enter = (id: string, version: number) => {
+          const key = `${id}@${version}`;
+          revisionReferences.set(key, false);
+          frames.push({
+            key,
+            dependencies: this.revision(id, version).dependencies ?? [],
+            next: 0,
+          });
+        };
+        enter(id, version);
+        while (frames.length) {
+          const frame = frames.at(-1)!;
+          const dependency = frame.dependencies[frame.next++];
+          if (!dependency) {
+            frames.pop();
+            continue;
+          }
+          const dependencyKey = `${dependency.capsuleId}@${dependency.version}`;
+          if (
+            dependency.capsuleId === capsuleId ||
+            revisionReferences.get(dependencyKey) === true
+          ) {
+            // A successful child short-circuits every ancestor's original `some` call.
+            for (const ancestor of frames) revisionReferences.set(ancestor.key, true);
+            return true;
+          }
+          if (!revisionReferences.has(dependencyKey))
+            enter(dependency.capsuleId, dependency.version);
+        }
+        return false;
       };
       const packetReferences = (packet: Packet) =>
         packet.manifest.some((m) => references(m.capsuleId, m.version));

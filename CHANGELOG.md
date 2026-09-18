@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0 — independent task handoff
+
+- Start independent work in one atomic operation: create a stream, connect explicit shared capsules, compile the exact packet, and register a caller-reported receipt. Available in the CLI, HTTP SDK, local/remote MCP and workbench.
+- Requested context must fit and pass tracked-revision preflight; any failure rolls back the entire handoff. HTTP/SDK retries can use explicit idempotency keys. Task start does not execute a model or change the directory's selected stream.
+- Added exact packet retrieval to MCP and a two-client integration walkthrough.
+- Replaced recursive core dependency walks after a valid 6000-node chain exposed a call-stack crash. Historical revisions, dependency order and pinned semantics are preserved; no production capacity guarantee is implied.
+
 ## 0.3.0 — compact workspace
 
 - The workbench uses a normalized workspace response with shared capsule references and packet summaries. Full immutable packets load when opened, with visible loading/errors and protection against obsolete selections.

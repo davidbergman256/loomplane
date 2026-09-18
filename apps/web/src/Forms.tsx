@@ -5,19 +5,40 @@ import { ArrowRight, Link2, X } from 'lucide-react';
 import type { Capsule, CapsuleKind, Packet, Project, Stream } from '../../../src/core/types';
 import { api } from './api';
 import DependencyEditor from './DependencyEditor';
+import StartTaskForm from './StartTaskForm';
+import type { StartedTask } from '../../../src/core/types';
 export type FormKind =
+  | { type: 'task' }
   | { type: 'project' }
   | { type: 'stream' }
   | { type: 'capsule'; streamId?: string; capsule?: Capsule }
   | { type: 'mount'; streamId?: string; capsuleId?: string }
   | { type: 'compile'; streamId: string };
+export interface FormResult {
+  projectId?: string;
+  capsule?: Capsule;
+  packet?: Packet;
+  startedTask?: StartedTask;
+}
 interface Props {
   form: FormKind;
   snapshot: WorkspaceView;
   onClose: () => void;
-  onSaved: (result?: { projectId?: string; capsule?: Capsule; packet?: Packet }) => void;
+  onSaved: (result?: FormResult) => void;
 }
-export default function Forms({ form, snapshot, onClose, onSaved }: Props) {
+export default function Forms(props: Props) {
+  return props.form.type === 'task' ? (
+    <StartTaskForm {...props} />
+  ) : (
+    <ContextForm {...props} form={props.form} />
+  );
+}
+function ContextForm({
+  form,
+  snapshot,
+  onClose,
+  onSaved,
+}: Omit<Props, 'form'> & { form: Exclude<FormKind, { type: 'task' }> }) {
   const edit = form.type === 'capsule' ? form.capsule : undefined;
   const streamId = 'streamId' in form ? form.streamId : undefined;
   const currentStream = snapshot.streams.find((s) => s.stream.id === streamId);
