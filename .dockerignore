@@ -1,0 +1,9 @@
+node_modules
+dist
+.git
+.loomplane
+.env*
+artifacts
+.superpowers
+*.sqlite*
+.weft

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "loomplane": {
+      "command": "loomplane",
+      "args": [
+        "--db",
+        "/absolute/path/to/project/.loomplane/loomplane.sqlite",
+        "mcp"
+      ]
+    }
+  }
+}

@@ -1,0 +1,4 @@
+{"timestamp":"2026-01-15T12:00:00.000Z","type":"session_meta","payload":{"id":"synthetic-session","cwd":"/tmp/synthetic-project"}}
+{"timestamp":"2026-01-15T12:00:01.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Keep the public API compatible with the documented contract."}]}}
+{"timestamp":"2026-01-15T12:00:02.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"I will preserve the documented request and response shapes."}]}}
+{"timestamp":"2026-01-15T12:00:03.000Z","type":"response_item","payload":{"type":"function_call","name":"synthetic_tool","arguments":"{}"}}

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "loomplane-remote": {
+      "command": "loomplane",
+      "args": [
+        "mcp",
+        "--url",
+        "https://loomplane.example.invalid"
+      ]
+    }
+  }
+}

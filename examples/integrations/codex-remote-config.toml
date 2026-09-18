@@ -1,0 +1,6 @@
+# Merge this block into ~/.codex/config.toml and replace only the server URL.
+# Supply LOOMPLANE_API_TOKEN to the Codex process through your normal local secret
+# environment. Do not put the token in this file or in the URL.
+[mcp_servers.loomplane_remote]
+command = "loomplane"
+args = ["mcp", "--url", "https://loomplane.example.invalid"]

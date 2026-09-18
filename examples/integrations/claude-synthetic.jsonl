@@ -1,0 +1,4 @@
+{"type":"summary","summary":"Synthetic session for importer verification"}
+{"type":"user","uuid":"synthetic-user-message","message":{"role":"user","content":[{"type":"text","text":"Use an explicit file path and do not scan user directories."}]}}
+{"type":"assistant","uuid":"synthetic-assistant-message","message":{"role":"assistant","content":[{"type":"text","text":"The importer will read only the path supplied by the caller."},{"type":"tool_use","name":"ignored_tool","input":{}}]}}
+{"type":"progress","data":{"message":"ignored non-conversation record"}}

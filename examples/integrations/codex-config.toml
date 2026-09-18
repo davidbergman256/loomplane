@@ -1,0 +1,6 @@
+# Merge this block into ~/.codex/config.toml and replace the example paths.
+# The database remains local and the server reads no files unless a tool is
+# explicitly asked to do so.
+[mcp_servers.loomplane]
+command = "loomplane"
+args = ["--db", "/absolute/path/to/project/.loomplane/loomplane.sqlite", "mcp"]
