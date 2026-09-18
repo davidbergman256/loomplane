@@ -6,7 +6,7 @@
 
 Give each agent its own working context. Share versioned decisions across them. Know when an assumption changes.
 
-[Quick start](#quick-start) · [How it works](#how-it-works) · [Agent integrations](examples/integrations) · [Business thesis](docs/strategy) · [Architecture](docs/specs/parallel-context.md)
+[Try the interactive demo](https://davidbergman256.github.io/loomplane/) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Agent integrations](examples/integrations) · [Business thesis](docs/strategy) · [Architecture](docs/specs/parallel-context.md)
 
 </div>
 
@@ -61,6 +61,7 @@ flowchart LR
 - **Packets** compile a bounded working context and record exactly which revisions were included. Full sections are included or omitted, never silently truncated.
 - **Derivation links** connect a capsule to the exact revisions it was based on. Changes propagate through indirect dependencies, with an impact view of affected streams and historical runs.
 - **Preflight checks** identify changed, retracted, removed, or newly mounted context and explicit conflicting keys.
+- **Packet comparison** explains historical revision, task, budget, omission, and selection changes. Browse packet history from the workbench’s Changes tab.
 - **Run receipts** associate a caller-reported agent run with its packet. Completion is blocked when that packet is stale or conflicted.
 
 An agent's context is a selection from a shared workspace, rather than a copy of its parent's entire conversation. Parallel context here is a data and coordination model; it does not change how a language model consumes its input window.
@@ -99,6 +100,9 @@ npm run loomplane -- mount CAPSULE_ID --stream UI_STREAM_ID
 npm run loomplane -- compile UI_STREAM_ID --task "Implement the usage panel" --budget 4000
 npm run loomplane -- check --packet PACKET_ID
 
+# Compare the recorded inputs after refreshing context.
+npm run loomplane -- diff OLD_PACKET_ID NEW_PACKET_ID
+
 # Record use (self-reported), and an outcome.
 npm run loomplane -- receipt start --packet PACKET_ID --agent "my-agent"
 npm run loomplane -- receipt finish RUN_ID --outcome "Implemented the usage panel"
@@ -132,6 +136,18 @@ After building:
 
 Use absolute paths: agent clients may start in another working directory. See [integration examples](examples/integrations) for client-specific configuration and the agent workflow. Imported source text is historical data, not privileged instructions.
 
+## Wrap a coding command
+
+`loomplane run` compiles the selected stream, starts a receipt, supplies private context files to a command, and checks freshness again after it exits:
+
+```sh
+loomplane run --task "Implement the usage panel" -- your-agent-command arguments
+```
+
+The command receives `LOOMPLANE_CONTEXT_FILE`, `LOOMPLANE_PACKET_FILE`, `LOOMPLANE_PACKET_ID`, and `LOOMPLANE_DB`. Configure your command to read the context file; setting an environment variable alone does not make a model use it. Arguments after `--` are launched directly, without an implicit shell. Child output stays on its original streams, and the runner prints its result to stderr.
+
+A nonzero command exit is preserved. A successful command whose tracked context changed exits **2** and leaves an abandoned receipt. `--root .` also checks explicit source fingerprints. `--keep-files` retains the packet files for inspection. See [the complete runner example](examples/runner) and its boundaries.
+
 ## Local ownership
 
 The default database is `.loomplane/loomplane.sqlite`, ignored by Git. Choose another path with `--db` or `LOOMPLANE_DB`. Export a project with:
@@ -150,7 +166,7 @@ Restore validates the complete archive before an atomic insert and refuses ID co
 
 Treat an export as sensitive if its source material is sensitive. Loomplane does not send data to a hosted service or model provider.
 
-Import is opt-in and takes an explicit file path:
+Import is opt-in and takes an explicit file path. Re-importing changed content revises its existing capsule; local edits trigger a conflict instead of being overwritten. See [import behavior](docs/integrations.md).
 
 ```sh
 npm run loomplane -- import /path/to/session.jsonl --project PROJECT_ID --format codex

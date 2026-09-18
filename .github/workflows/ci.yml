@@ -23,4 +23,7 @@ jobs:
       - run: npm run smoke:portable
       - run: npm run smoke:access
       - run: npm run smoke:remote
+      - run: npm run smoke:diff
+      - run: npm run smoke:runner
+      - run: npm run smoke:consistency
       - run: npm run build

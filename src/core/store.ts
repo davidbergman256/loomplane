@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { compileContext, detectConflicts } from './compiler.js';
 import { invariant, requiredText, LoomplaneError } from './errors.js';
 import { validatePortableProject } from './portable.js';
+import { comparePacketSnapshots } from './packet-diff.js';
 import type {
   AuditEvent,
   Capsule,
@@ -18,6 +19,8 @@ import type {
   Mount,
   MountInput,
   Packet,
+  PacketPage,
+  PacketDiff,
   Project,
   PublishCapsule,
   Revision,
@@ -118,7 +121,20 @@ export class Store {
   constructor(path: string) {
     if (path !== ':memory:') mkdirSync(dirname(resolve(path)), { recursive: true, mode: 0o700 });
     this.db = new DatabaseSync(path);
-    this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
+    try {
+      // Inspect an existing version before journal-mode changes or schema initialization.
+      if (this.db.prepare("SELECT 1 FROM sqlite_schema WHERE name='schema_version'").get()) {
+        const versions = this.db.prepare('SELECT version FROM schema_version').all();
+        invariant(
+          versions.length === 1 && versions[0].version === 1,
+          'Unsupported database schema version',
+          500,
+          'SCHEMA_VERSION',
+        );
+      }
+      this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;`);
+      this.transaction(() => {
+        this.db.exec(`
       CREATE TABLE IF NOT EXISTS schema_version(version INTEGER NOT NULL);
       INSERT INTO schema_version SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM schema_version);
       CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY, data TEXT NOT NULL);
@@ -137,10 +153,18 @@ export class Store {
       CREATE INDEX IF NOT EXISTS events_project ON events(project_id,id);
       CREATE VIRTUAL TABLE IF NOT EXISTS capsule_search USING fts5(capsule_id UNINDEXED, project_id UNINDEXED, title, body, tags, tokenize='unicode61');
     `);
-    const schema = this.db.prepare('SELECT version FROM schema_version').get() as {
-      version: number;
-    };
-    invariant(schema.version === 1, 'Unsupported database schema version', 500, 'SCHEMA_VERSION');
+        const versions = this.db.prepare('SELECT version FROM schema_version').all();
+        invariant(
+          versions.length === 1 && versions[0].version === 1,
+          'Unsupported database schema version',
+          500,
+          'SCHEMA_VERSION',
+        );
+      });
+    } catch (error) {
+      this.db.close();
+      throw error;
+    }
   }
   close(): void {
     this.db.close();
@@ -152,6 +176,20 @@ export class Store {
   }
   private transaction<T>(fn: () => T): T {
     this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const result = fn();
+      this.db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+  private readSnapshot<T>(fn: () => T): T {
+    // Composite reads share their caller's snapshot, including an active write transaction.
+    if (this.db.isTransaction) return fn();
+    // Deferred BEGIN establishes its snapshot on the first SELECT without reserving a writer.
+    this.db.exec('BEGIN');
     try {
       const result = fn();
       this.db.exec('COMMIT');
@@ -317,11 +355,13 @@ export class Store {
     return parse<Stream>(row);
   }
   listStreams(projectId: string): Stream[] {
-    this.getProject(projectId);
-    return this.db
-      .prepare('SELECT data FROM streams WHERE project_id=? ORDER BY rowid')
-      .all(projectId)
-      .map(parse<Stream>);
+    return this.readSnapshot(() => {
+      this.getProject(projectId);
+      return this.db
+        .prepare('SELECT data FROM streams WHERE project_id=? ORDER BY rowid')
+        .all(projectId)
+        .map(parse<Stream>);
+    });
   }
   createStream(input: CreateStream): Stream {
     this.getProject(requiredText(input.projectId, 'projectId'));
@@ -376,11 +416,13 @@ export class Store {
     return parse<Capsule>(row);
   }
   listCapsules(projectId: string): Capsule[] {
-    this.getProject(projectId);
-    return this.db
-      .prepare('SELECT data FROM capsules WHERE project_id=? ORDER BY rowid DESC')
-      .all(projectId)
-      .map(parse<Capsule>);
+    return this.readSnapshot(() => {
+      this.getProject(projectId);
+      return this.db
+        .prepare('SELECT data FROM capsules WHERE project_id=? ORDER BY rowid DESC')
+        .all(projectId)
+        .map(parse<Capsule>);
+    });
   }
   publishCapsule(input: PublishCapsule): Capsule {
     this.getProject(requiredText(input.projectId, 'projectId'));
@@ -463,11 +505,13 @@ export class Store {
     });
   }
   getRevisions(capsuleId: string): Revision[] {
-    this.getCapsule(capsuleId);
-    return this.db
-      .prepare('SELECT data FROM revisions WHERE capsule_id=? ORDER BY version DESC')
-      .all(capsuleId)
-      .map(parse<Revision>);
+    return this.readSnapshot(() => {
+      this.getCapsule(capsuleId);
+      return this.db
+        .prepare('SELECT data FROM revisions WHERE capsule_id=? ORDER BY version DESC')
+        .all(capsuleId)
+        .map(parse<Revision>);
+    });
   }
   private revision(capsuleId: string, version: number): Revision {
     const row = this.db
@@ -507,11 +551,13 @@ export class Store {
     });
   }
   listMounts(streamId: string): Mount[] {
-    this.getStream(streamId);
-    return this.db
-      .prepare('SELECT data FROM mounts WHERE stream_id=? ORDER BY rowid')
-      .all(streamId)
-      .map(parse<Mount>);
+    return this.readSnapshot(() => {
+      this.getStream(streamId);
+      return this.db
+        .prepare('SELECT data FROM mounts WHERE stream_id=? ORDER BY rowid')
+        .all(streamId)
+        .map(parse<Mount>);
+    });
   }
   mount(input: MountInput): Mount {
     return this.transaction(() => {
@@ -625,12 +671,68 @@ export class Store {
     invariant(row, 'Packet not found', 404, 'NOT_FOUND');
     return parse<Packet>(row);
   }
+  comparePackets(fromId: string, toId: string): PacketDiff {
+    return this.readSnapshot(() => {
+      return comparePacketSnapshots(
+        this.getPacket(fromId),
+        this.getPacket(toId),
+        (capsuleId, version) => this.revision(capsuleId, version),
+      );
+    });
+  }
   getLatestPacket(streamId: string): Packet | null {
-    this.getStream(streamId);
-    const row = this.db
-      .prepare('SELECT data FROM packets WHERE stream_id=? ORDER BY rowid DESC LIMIT 1')
-      .get(streamId);
-    return row ? parse<Packet>(row) : null;
+    return this.readSnapshot(() => {
+      this.getStream(streamId);
+      const row = this.db
+        .prepare('SELECT data FROM packets WHERE stream_id=? ORDER BY rowid DESC LIMIT 1')
+        .get(streamId);
+      return row ? parse<Packet>(row) : null;
+    });
+  }
+  listPackets(streamId: string, options: { before?: string; limit?: number } = {}): PacketPage {
+    return this.readSnapshot(() => {
+      this.getStream(streamId);
+      const limit = options.limit ?? 10;
+      invariant(
+        Number.isInteger(limit) && limit >= 1 && limit <= 50,
+        'Packet limit must be from 1 to 50',
+      );
+      let before: number | null = null;
+      if (options.before !== undefined) {
+        requiredText(options.before, 'before');
+        const cursor = this.db
+          .prepare('SELECT rowid FROM packets WHERE id=? AND stream_id=?')
+          .get(options.before, streamId);
+        invariant(cursor, 'Packet cursor not found in this stream', 404, 'NOT_FOUND');
+        before = Number(cursor.rowid);
+      }
+      const rows =
+        before === null
+          ? this.db
+              .prepare('SELECT data FROM packets WHERE stream_id=? ORDER BY rowid DESC LIMIT ?')
+              .all(streamId, limit + 1)
+          : this.db
+              .prepare(
+                'SELECT data FROM packets WHERE stream_id=? AND rowid<? ORDER BY rowid DESC LIMIT ?',
+              )
+              .all(streamId, before, limit + 1);
+      const items = rows.slice(0, limit).map((row) => {
+        const p = parse<Packet>(row);
+        return {
+          id: p.id,
+          projectId: p.projectId,
+          streamId: p.streamId,
+          task: p.task,
+          budget: p.budget,
+          estimatedTokens: p.estimatedTokens,
+          createdAt: p.createdAt,
+          capsuleCount: p.manifest.length,
+          omittedCount: p.omitted.length,
+          conflictCount: p.conflicts.length,
+        };
+      });
+      return { items, nextCursor: rows.length > limit ? items.at(-1)!.id : null };
+    });
   }
   private packetDrift(packet: Packet): Drift[] {
     const candidates = this.candidates(packet.streamId);
@@ -693,39 +795,45 @@ export class Store {
     return drift;
   }
   checkPacket(packetId: string): PacketCheck {
-    const packet = this.getPacket(packetId);
-    const changes = this.packetDrift(packet);
-    const conflicts = detectConflicts(
-      this.candidates(packet.streamId).map((c) => ({ ...c.capsule, body: c.revision.body })),
-    );
-    const drift = changes.filter((d) => !d.pinned);
-    return {
-      ok: drift.length === 0 && conflicts.length === 0 && packet.conflicts.length === 0,
-      packetId,
-      drift,
-      conflicts: [
-        ...packet.conflicts,
-        ...conflicts.filter((c) => !packet.conflicts.some((p) => p.key === c.key)),
-      ],
-      pinnedUpdates: changes.filter((d) => d.pinned),
-      checkedAt: now(),
-    };
+    return this.readSnapshot(() => {
+      const packet = this.getPacket(packetId);
+      const changes = this.packetDrift(packet);
+      const conflicts = detectConflicts(
+        this.candidates(packet.streamId).map((c) => ({ ...c.capsule, body: c.revision.body })),
+      );
+      const drift = changes.filter((d) => !d.pinned);
+      return {
+        ok: drift.length === 0 && conflicts.length === 0 && packet.conflicts.length === 0,
+        packetId,
+        drift,
+        conflicts: [
+          ...packet.conflicts,
+          ...conflicts.filter((c) => !packet.conflicts.some((p) => p.key === c.key)),
+        ],
+        pinnedUpdates: changes.filter((d) => d.pinned),
+        checkedAt: now(),
+      };
+    });
   }
   getStreamState(streamId: string): StreamState {
-    const stream = this.getStream(streamId);
-    const candidates = this.candidates(streamId);
-    const latestPacket = this.getLatestPacket(streamId);
-    return {
-      stream,
-      owned: candidates.filter((c) => c.mode === 'owned').map((c) => c.capsule),
-      mounts: this.listMounts(streamId).map((m) => ({
-        ...m,
-        capsule: this.getCapsule(m.capsuleId),
-      })),
-      latestPacket,
-      drift: latestPacket ? this.packetDrift(latestPacket) : [],
-      conflicts: detectConflicts(candidates.map((c) => ({ ...c.capsule, body: c.revision.body }))),
-    };
+    return this.readSnapshot(() => {
+      const stream = this.getStream(streamId);
+      const candidates = this.candidates(streamId);
+      const latestPacket = this.getLatestPacket(streamId);
+      return {
+        stream,
+        owned: candidates.filter((c) => c.mode === 'owned').map((c) => c.capsule),
+        mounts: this.listMounts(streamId).map((m) => ({
+          ...m,
+          capsule: this.getCapsule(m.capsuleId),
+        })),
+        latestPacket,
+        drift: latestPacket ? this.packetDrift(latestPacket) : [],
+        conflicts: detectConflicts(
+          candidates.map((c) => ({ ...c.capsule, body: c.revision.body })),
+        ),
+      };
+    });
   }
   startReceipt(packetId: string, agent: string): Receipt {
     return this.transaction(() => {
@@ -767,11 +875,13 @@ export class Store {
     return parse<Receipt>(row);
   }
   listReceipts(projectId: string): Receipt[] {
-    this.getProject(projectId);
-    return this.db
-      .prepare('SELECT data FROM receipts WHERE project_id=? ORDER BY rowid DESC')
-      .all(projectId)
-      .map(parse<Receipt>);
+    return this.readSnapshot(() => {
+      this.getProject(projectId);
+      return this.db
+        .prepare('SELECT data FROM receipts WHERE project_id=? ORDER BY rowid DESC')
+        .all(projectId)
+        .map(parse<Receipt>);
+    });
   }
   finishReceipt(
     receiptId: string,
@@ -814,157 +924,177 @@ export class Store {
     });
   }
   impact(capsuleId: string): Impact {
-    const capsule = this.getCapsule(capsuleId);
-    const all = this.listCapsules(capsule.projectId);
-    const impacted = new Set([capsuleId]);
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (const c of all)
-        if (!impacted.has(c.id) && (c.dependencies ?? []).some((d) => impacted.has(d.capsuleId))) {
-          impacted.add(c.id);
-          changed = true;
-        }
-    }
-    // Current dependencies identify potential consumers. Recorded packets require their historical graph.
-    const revisionReferences = new Map<string, boolean>();
-    const references = (id: string, version: number): boolean => {
-      if (id === capsuleId) return true;
-      const key = `${id}@${version}`;
-      const cached = revisionReferences.get(key);
-      if (cached !== undefined) return cached;
-      revisionReferences.set(key, false);
-      const result = (this.revision(id, version).dependencies ?? []).some((d) =>
-        references(d.capsuleId, d.version),
-      );
-      revisionReferences.set(key, result);
-      return result;
-    };
-    const packetReferences = (packet: Packet) =>
-      packet.manifest.some((m) => references(m.capsuleId, m.version));
-    const streams: Impact['streams'] = [];
-    for (const stream of this.listStreams(capsule.projectId)) {
-      const state = this.getStreamState(stream.id);
-      const owned = state.owned.map((c) => c.id);
-      const mounted = state.mounts.map((m) => m.capsuleId);
-      const historical = state.latestPacket && packetReferences(state.latestPacket);
-      if (owned.some((c) => impacted.has(c)) || mounted.some((c) => impacted.has(c)) || historical)
-        streams.push({
-          stream,
-          relation: owned.includes(capsuleId)
-            ? 'owner'
-            : mounted.includes(capsuleId) ||
-                state.latestPacket?.manifest.some((m) => m.capsuleId === capsuleId)
-              ? 'direct'
-              : 'transitive',
-          stale: state.drift.some((d) => !d.pinned),
-        });
-    }
-    const receipts = this.listReceipts(capsule.projectId)
-      .filter((r) => packetReferences(this.getPacket(r.packetId)))
-      .map((receipt) => ({ receipt, check: this.checkPacket(receipt.packetId) }));
-    return {
-      capsule,
-      dependentCapsules: all.filter((c) => c.id !== capsuleId && impacted.has(c.id)),
-      streams,
-      receipts,
-    };
+    return this.readSnapshot(() => {
+      const capsule = this.getCapsule(capsuleId);
+      const all = this.listCapsules(capsule.projectId);
+      const impacted = new Set([capsuleId]);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const c of all)
+          if (
+            !impacted.has(c.id) &&
+            (c.dependencies ?? []).some((d) => impacted.has(d.capsuleId))
+          ) {
+            impacted.add(c.id);
+            changed = true;
+          }
+      }
+      // Current dependencies identify potential consumers. Recorded packets require their historical graph.
+      const revisionReferences = new Map<string, boolean>();
+      const references = (id: string, version: number): boolean => {
+        if (id === capsuleId) return true;
+        const key = `${id}@${version}`;
+        const cached = revisionReferences.get(key);
+        if (cached !== undefined) return cached;
+        revisionReferences.set(key, false);
+        const result = (this.revision(id, version).dependencies ?? []).some((d) =>
+          references(d.capsuleId, d.version),
+        );
+        revisionReferences.set(key, result);
+        return result;
+      };
+      const packetReferences = (packet: Packet) =>
+        packet.manifest.some((m) => references(m.capsuleId, m.version));
+      const streams: Impact['streams'] = [];
+      for (const stream of this.listStreams(capsule.projectId)) {
+        const state = this.getStreamState(stream.id);
+        const owned = state.owned.map((c) => c.id);
+        const mounted = state.mounts.map((m) => m.capsuleId);
+        const historical = state.latestPacket && packetReferences(state.latestPacket);
+        if (
+          owned.some((c) => impacted.has(c)) ||
+          mounted.some((c) => impacted.has(c)) ||
+          historical
+        )
+          streams.push({
+            stream,
+            relation: owned.includes(capsuleId)
+              ? 'owner'
+              : mounted.includes(capsuleId) ||
+                  state.latestPacket?.manifest.some((m) => m.capsuleId === capsuleId)
+                ? 'direct'
+                : 'transitive',
+            stale: state.drift.some((d) => !d.pinned),
+          });
+      }
+      const receipts = this.listReceipts(capsule.projectId)
+        .filter((r) => packetReferences(this.getPacket(r.packetId)))
+        .map((receipt) => ({ receipt, check: this.checkPacket(receipt.packetId) }));
+      return {
+        capsule,
+        dependentCapsules: all.filter((c) => c.id !== capsuleId && impacted.has(c.id)),
+        streams,
+        receipts,
+      };
+    });
   }
   snapshot(projectId?: string): Snapshot {
-    const projects = this.listProjects();
-    const project = projectId ? this.getProject(projectId) : (projects[0] ?? null);
-    const streams = project
-      ? this.listStreams(project.id).map((s) => this.getStreamState(s.id))
-      : [];
-    const capsules = project ? this.listCapsules(project.id) : [];
-    return {
-      projects,
-      project,
-      streams,
-      capsules,
-      events: project ? this.events(project.id, 50) : [],
-      stats: {
-        capsules: capsules.filter((c) => c.status === 'active').length,
-        streams: streams.length,
-        packets: project
-          ? Number(
-              (
-                this.db
-                  .prepare('SELECT COUNT(*) AS n FROM packets WHERE project_id=?')
-                  .get(project.id) as { n: number }
-              ).n,
-            )
-          : 0,
-        staleStreams: streams.filter((s) => s.drift.some((d) => !d.pinned)).length,
-        mounts: streams.reduce((n, s) => n + s.mounts.length, 0),
-      },
-    };
+    return this.readSnapshot(() => {
+      const projects = this.listProjects();
+      const project = projectId ? this.getProject(projectId) : (projects[0] ?? null);
+      const streams = project
+        ? this.listStreams(project.id).map((s) => this.getStreamState(s.id))
+        : [];
+      const capsules = project ? this.listCapsules(project.id) : [];
+      return {
+        projects,
+        project,
+        streams,
+        capsules,
+        events: project ? this.events(project.id, 50) : [],
+        stats: {
+          capsules: capsules.filter((c) => c.status === 'active').length,
+          streams: streams.length,
+          packets: project
+            ? Number(
+                (
+                  this.db
+                    .prepare('SELECT COUNT(*) AS n FROM packets WHERE project_id=?')
+                    .get(project.id) as { n: number }
+                ).n,
+              )
+            : 0,
+          staleStreams: streams.filter((s) => s.drift.some((d) => !d.pinned)).length,
+          mounts: streams.reduce((n, s) => n + s.mounts.length, 0),
+        },
+      };
+    });
   }
   search(projectId: string, query: string, limit = 30): SearchHit[] {
-    this.getProject(projectId);
-    invariant(
-      typeof query === 'string' && query.length <= 1000,
-      'Search query exceeds 1000 characters',
-    );
-    invariant(
-      Number.isInteger(limit) && limit > 0 && limit <= 100,
-      'limit must be between 1 and 100',
-    );
-    const terms = query.match(/[\p{L}\p{N}_-]+/gu)?.slice(0, 30) ?? [];
-    if (!terms.length) return [];
-    const match = terms.map((t) => `"${t.replaceAll('"', '""')}"*`).join(' OR ');
-    const rows = this.db
-      .prepare(
-        "SELECT capsule_id, snippet(capsule_search,3,'[',']','…',28) AS snippet, bm25(capsule_search,0,0,5,1,2) AS rank FROM capsule_search WHERE capsule_search MATCH ? AND project_id=? ORDER BY rank LIMIT ?",
-      )
-      .all(match, projectId, limit) as { capsule_id: string; snippet: string; rank: number }[];
-    return rows.map((r) => ({
-      capsule: this.getCapsule(r.capsule_id),
-      snippet: r.snippet,
-      rank: r.rank,
-    }));
+    return this.readSnapshot(() => {
+      this.getProject(projectId);
+      invariant(
+        typeof query === 'string' && query.length <= 1000,
+        'Search query exceeds 1000 characters',
+      );
+      invariant(
+        Number.isInteger(limit) && limit > 0 && limit <= 100,
+        'limit must be between 1 and 100',
+      );
+      const terms = query.match(/[\p{L}\p{N}_-]+/gu)?.slice(0, 30) ?? [];
+      if (!terms.length) return [];
+      const match = terms.map((t) => `"${t.replaceAll('"', '""')}"*`).join(' OR ');
+      const rows = this.db
+        .prepare(
+          "SELECT capsule_id, snippet(capsule_search,3,'[',']','…',28) AS snippet, bm25(capsule_search,0,0,5,1,2) AS rank FROM capsule_search WHERE capsule_search MATCH ? AND project_id=? ORDER BY rank LIMIT ?",
+        )
+        .all(match, projectId, limit) as { capsule_id: string; snippet: string; rank: number }[];
+      return rows.map((r) => ({
+        capsule: this.getCapsule(r.capsule_id),
+        snippet: r.snippet,
+        rank: r.rank,
+      }));
+    });
   }
   events(projectId: string, limit = 100): AuditEvent[] {
-    this.getProject(projectId);
-    invariant(Number.isInteger(limit) && limit > 0 && limit <= 10000, 'Event limit out of range');
-    return this.db
-      .prepare('SELECT * FROM events WHERE project_id=? ORDER BY id DESC LIMIT ?')
-      .all(projectId, limit)
-      .map((row) => ({
-        id: Number(row.id),
-        projectId: String(row.project_id),
-        type: String(row.type),
-        entityId: String(row.entity_id),
-        actor: String(row.actor),
-        data: JSON.parse(String(row.data)),
-        createdAt: String(row.created_at),
-      }));
+    return this.readSnapshot(() => {
+      this.getProject(projectId);
+      invariant(Number.isInteger(limit) && limit > 0 && limit <= 10000, 'Event limit out of range');
+      return this.db
+        .prepare('SELECT * FROM events WHERE project_id=? ORDER BY id DESC LIMIT ?')
+        .all(projectId, limit)
+        .map((row) => ({
+          id: Number(row.id),
+          projectId: String(row.project_id),
+          type: String(row.type),
+          entityId: String(row.entity_id),
+          actor: String(row.actor),
+          data: JSON.parse(String(row.data)),
+          createdAt: String(row.created_at),
+        }));
+    });
   }
   findBySource(projectId: string, sourceUri: string): Capsule | null {
-    return (
-      this.listCapsules(projectId).find((c) => c.evidence.some((e) => e.uri === sourceUri)) ?? null
-    );
+    return this.readSnapshot(() => {
+      return (
+        this.listCapsules(projectId).find((c) => c.evidence.some((e) => e.uri === sourceUri)) ??
+        null
+      );
+    });
   }
   exportProject(projectId: string): object {
-    const project = this.getProject(projectId);
-    const streams = this.listStreams(projectId);
-    const capsules = this.listCapsules(projectId);
-    return {
-      format: 'loomplane.project',
-      version: 1,
-      exportedAt: now(),
-      project,
-      streams,
-      capsules,
-      revisions: capsules.flatMap((c) => this.getRevisions(c.id)),
-      mounts: streams.flatMap((s) => this.listMounts(s.id)),
-      packets: this.db
-        .prepare('SELECT data FROM packets WHERE project_id=? ORDER BY rowid')
-        .all(projectId)
-        .map(parse<Packet>),
-      receipts: this.listReceipts(projectId),
-      events: this.events(projectId, 10000).reverse(),
-    };
+    return this.readSnapshot(() => {
+      const project = this.getProject(projectId);
+      const streams = this.listStreams(projectId);
+      const capsules = this.listCapsules(projectId);
+      return {
+        format: 'loomplane.project',
+        version: 1,
+        exportedAt: now(),
+        project,
+        streams,
+        capsules,
+        revisions: capsules.flatMap((c) => this.getRevisions(c.id)),
+        mounts: streams.flatMap((s) => this.listMounts(s.id)),
+        packets: this.db
+          .prepare('SELECT data FROM packets WHERE project_id=? ORDER BY rowid')
+          .all(projectId)
+          .map(parse<Packet>),
+        receipts: this.listReceipts(projectId),
+        events: this.events(projectId, 10000).reverse(),
+      };
+    });
   }
   restoreProject(input: unknown): Project {
     const bundle = validatePortableProject(input);

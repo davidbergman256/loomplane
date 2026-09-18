@@ -14,14 +14,16 @@
   "exports": {
     ".": "./dist/core/index.js",
     "./types": "./dist/core/types.js",
-    "./sdk": "./dist/sdk/index.js"
+    "./sdk": "./dist/sdk/index.js",
+    "./runner": "./dist/runner/run.js"
   },
   "files": [
     "dist",
     "README.md",
     "LICENSE",
     "examples",
-    "THIRD_PARTY_NOTICES.md"
+    "THIRD_PARTY_NOTICES.md",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "dev": "tsx src/cli/index.ts serve --dev",
@@ -40,7 +42,10 @@
     "smoke:access": "tsx scripts/access-smoke.ts",
     "smoke:remote": "tsx scripts/remote-mcp-smoke.ts",
     "format": "prettier --write src apps/web/src scripts examples/sdk docs README.md CONTRIBUTING.md SECURITY.md AGENTS.md package.json",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "smoke:diff": "tsx scripts/packet-diff-smoke.ts",
+    "smoke:runner": "tsx scripts/runner-smoke.ts",
+    "smoke:consistency": "tsx scripts/consistency-smoke.ts"
   },
   "dependencies": {
     "@fontsource-variable/dm-sans": "^5.3.0",

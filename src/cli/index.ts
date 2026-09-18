@@ -131,6 +131,33 @@ program
     }),
   );
 program
+  .command('run <command...>')
+  .description('Supply a context packet to an explicit command and check freshness when it exits')
+  .option('--stream <id>', 'Stream to compile; defaults to this workspace selection')
+  .option('--task <text>', 'Task recorded in the packet', '')
+  .option('--budget <tokens>', 'Estimated context budget', '4000')
+  .option('--agent <name>', 'Receipt agent label; defaults to the command name')
+  .option('--root <path>', 'Also check fingerprinted source files under this root')
+  .option('--keep-files', 'Retain private packet files after the command exits')
+  .action(async (command: string[], opts) =>
+    useStore(async (store) => {
+      const { runWithContext } = await import('../runner/run.js');
+      const result = await runWithContext(store, {
+        databasePath: storePath(),
+        streamId: selectedStream(storePath(), opts.stream),
+        task: opts.task,
+        budget: number(opts.budget),
+        agent: opts.agent,
+        command,
+        sourceRoot: opts.root,
+        keepFiles: opts.keepFiles,
+      });
+      // Child stdout remains usable for piping; execution metadata goes to stderr.
+      process.stderr.write(JSON.stringify(result, null, 2) + '\n');
+      process.exitCode = result.exitCode;
+    }),
+  );
+program
   .command('demo')
   .description('Seed the explicitly synthetic Orbit demonstration')
   .action(async () => useStore((store) => ({ ...seedDemo(store), next: 'loomplane serve' })));
@@ -398,6 +425,27 @@ program
       }
       return packet;
     }),
+  );
+program
+  .command('diff <fromPacketId> <toPacketId>')
+  .description(
+    'Compare immutable packets from the same stream; changes are not proof of revalidation',
+  )
+  .action((fromPacketId, toPacketId) =>
+    useStore((store) => store.comparePackets(fromPacketId, toPacketId)),
+  );
+program
+  .command('packets <streamId>')
+  .description('Browse immutable packet history, newest first')
+  .option('--before <packetId>', 'Continue from the previous page cursor')
+  .option('--limit <count>', 'Page size, from 1 to 50', '10')
+  .action((streamId, opts) =>
+    useStore((store) =>
+      store.listPackets(streamId, {
+        before: opts.before,
+        limit: number(opts.limit),
+      }),
+    ),
   );
 program
   .command('check [streamId]')

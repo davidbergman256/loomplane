@@ -26,3 +26,13 @@
 - Verified full TypeScript/build, core lifecycle, source fingerprints, archive restore, scoped HTTP/SSE, local MCP, remote MCP, and SDK flows; exercised documentation onboarding in a fresh directory.
 - Browser verification covered personal and authenticated workflows, mobile layout, immutable history, impact, packets and receipts. Production assets use bundled fonts and made zero external HTTP resource requests in the inspected run.
 - Docker configuration is provided; Docker is not installed on this host, so the container build has not been exercised here.
+
+### Milestone: adoption and explainability
+
+- Published the complete preview source; the first GitHub CI run passed on commit 70ae5e3.
+- Added historical packet comparison across core, CLI, HTTP, SDK, MCP and workbench, plus bounded packet-history cursors that remain stable as new packets arrive.
+- Added source-aware re-import: identical records skip, changed managed records create revisions, and local edits surface conflicts.
+- Added explicit command runner with private packet files, caller-reported receipt lifecycle, direct argv execution, signal forwarding, and source/packet postflight. Verified CLI argument forwarding and exit-code preservation from a fresh directory.
+- Added consistent multi-query SQLite read snapshots and rejection of future database schema versions before mutation. Verified an interleaved writer cannot produce a torn export.
+- Workbench browser checks exercised new compilation, historical comparison, revision details and mobile layout; inspected 390px layout had no document overflow.
+- Added a static, explicitly synthetic concept demo for GitHub Pages, repository contribution templates, third-party notices, and private vulnerability reporting.

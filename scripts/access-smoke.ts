@@ -22,6 +22,7 @@ const cap = store.publishCapsule({
   body: 'B only',
 });
 const bp = store.compile({ streamId: sb.id });
+const ap = store.compile({ streamId: sa.id });
 const reader = access.create(a.id, 'Read A', 'reader');
 const writer = access.create(a.id, 'Write A', 'writer');
 const server = createLoomplaneServer(store, { access });
@@ -55,12 +56,18 @@ try {
     `/export?projectId=${b.id}`,
     `/events?projectId=${b.id}`,
     `/streams/${sb.id}`,
+    `/streams/${sb.id}/packets`,
+    `/streams/${sa.id}/packets?before=${bp.id}`,
     `/capsules/${cap.id}`,
     `/capsules/${cap.id}/impact`,
     `/packets/${bp.id}`,
     `/packets/${bp.id}/check`,
+    `/packets/${bp.id}/compare?to=${ap.id}`,
+    `/packets/${ap.id}/compare?to=${bp.id}`,
+    `/packets/${ap.id}/compare?to=pkt_unknown`,
   ])
     assert.equal((await call(endpoint, reader.token)).status, 404, endpoint);
+  assert.equal((await call(`/packets/${ap.id}/compare?to=${ap.id}`, reader.token)).status, 200);
   assert.equal(
     (
       await call('/capsules', reader.token, 'POST', {

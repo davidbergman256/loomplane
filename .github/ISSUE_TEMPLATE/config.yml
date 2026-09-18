@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability privately
+    url: https://github.com/davidbergman256/loomplane/security/advisories/new
+    about: Do not include exploitable details or private source material in a public issue.

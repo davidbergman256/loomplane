@@ -3057,9 +3057,135 @@ svg {
   flex-shrink: 0;
 }
 @media (max-width: 1250px) {
-  .sidebar .brand { font-size: 20px; gap: 7px; }
+  .sidebar .brand {
+    font-size: 20px;
+    gap: 7px;
+  }
 }
 @media (min-width: 601px) and (max-width: 800px) {
-  .sidebar .brand { font-size: 18px; gap: 6px; }
-  .sidebar-brand { gap: 5px; }
+  .sidebar .brand {
+    font-size: 18px;
+    gap: 6px;
+  }
+  .sidebar-brand {
+    gap: 5px;
+  }
+}
+
+.packet-history {
+  display: grid;
+  gap: 18px;
+}
+.packet-baseline {
+  display: grid;
+  gap: 8px;
+  font-weight: 600;
+}
+.packet-baseline select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 9px;
+  background: white;
+  color: var(--ink);
+}
+.packet-comparison {
+  display: grid;
+  gap: 12px;
+}
+.packet-delta-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--blue);
+}
+.packet-delta {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  overflow-wrap: anywhere;
+}
+.packet-delta summary {
+  cursor: pointer;
+  line-height: 1.5;
+}
+.packet-delta summary span {
+  margin-left: 8px;
+  color: #6f7f90;
+  font-size: 11px;
+}
+.packet-delta-side {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-left: 2px solid #b0bcc9;
+  background: #f5f7f9;
+}
+.packet-delta-side.after {
+  border-color: #498677;
+  background: #f0f7f4;
+}
+.packet-delta-side > small {
+  display: block;
+  color: #677888;
+  margin-bottom: 7px;
+}
+.packet-delta-side > strong {
+  display: block;
+  margin-bottom: 5px;
+}
+.packet-delta-side p,
+.packet-value-change p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.packet-delta-side p {
+  max-height: 260px;
+  overflow: auto;
+}
+.packet-metadata {
+  margin-top: 10px;
+  font-size: 11px;
+}
+.packet-metadata pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 220px;
+  overflow: auto;
+}
+.packet-value-change {
+  display: grid;
+  gap: 5px;
+}
+.packet-history-list {
+  margin: 12px 0;
+}
+.packet-history-list > button {
+  display: flex;
+  width: 100%;
+  text-align: left;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.packet-history-list > button > span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.packet-history-list strong {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+.packet-history-list small {
+  color: #728192;
+}
+.packet-history-list > button:disabled {
+  opacity: 1;
+  background: #f3f6fa;
+  padding-left: 8px;
+  padding-right: 8px;
 }

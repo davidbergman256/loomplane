@@ -55,6 +55,14 @@ Receipts are caller-reported records of packet use, not model execution or proof
 - Store `checkPacket(packetId)`, `startReceipt(packetId,agent)`, `getReceipt(id)`, `listReceipts(projectId)`, `finishReceipt(id,{status,outcome?,gitCommit?})`.
 - CLI `loomplane check --packet ID` uses exit code 2 when invalid. `loomplane receipt start --packet ID --agent NAME`; `loomplane receipt finish ID --outcome TEXT --commit SHA`.
 
+## Comparing recorded context
+
+`GET /api/packets/:fromId/compare?to=:toId` returns a `PacketDiff` for two immutable packets from the same project and stream. Both IDs are authorized independently. Read-only credentials may compare packets inside their project. The CLI exposes `loomplane diff FROM_PACKET TO_PACKET`, the SDK exposes `comparePackets(fromId, toId)`, and MCP exposes `loomplane_compare_packets`.
+
+The result includes historical before/after revisions, added/removed/revised capsules, changed selection modes, task and budget changes, omissions, conflicts, and manifest ordering. It does not consult current capsule heads or update either packet. A difference describes recorded inputs, not semantic incompatibility or proof of code revalidation. See [the comparison contract](packet-diff.md).
+
+`GET /api/streams/:id/packets?limit=10&before=PACKET_ID` returns `{items:PacketSummary[],nextCursor:string|null}`, newest first. Omit `before` for the first page and pass the returned cursor for older entries. The cursor must identify a packet in that stream. The page size is 1–50; summaries omit context text and manifests. The insertion-order cursor prevents new packets arriving between pages from duplicating older results. Matching interfaces: Store/SDK `listPackets`, CLI `packets`, MCP `loomplane_list_packets`.
+
 ## Revision-bound derivation and impact
 
 Capsule publication and revision accept `dependencies: [{capsuleId,version}]`. References must exist in the same project; cycles in the current dependency graph are rejected. Each revision retains its own dependencies. If an upstream revision changes or is retracted, packets containing a derived capsule become stale transitively, even if that upstream capsule was not mounted directly. Recompiling a stale derived claim does not revalidate it: publish a reviewed revision with updated dependencies.

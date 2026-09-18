@@ -19,6 +19,7 @@ import { api, dateLabel, download } from './api';
 import { ExternalEvidence, Kind } from './components';
 import type { FormKind } from './Forms';
 import { ImpactPanel, PacketPreflight } from './ContextHealth';
+import { PacketHistory } from './PacketHistory';
 export type Selection =
   { type: 'capsule'; id: string; version?: number } | { type: 'packet'; packet: Packet } | null;
 export default function Inspector({
@@ -441,6 +442,9 @@ function PacketInspector({
         <button className={tab === 'text' ? 'active' : ''} onClick={() => setTab('text')}>
           Packet text
         </button>
+        <button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>
+          Changes
+        </button>
       </div>
       <div className="inspector-body">
         <PacketPreflight
@@ -456,7 +460,9 @@ function PacketInspector({
             <p>{packet.task}</p>
           </div>
         )}
-        {tab === 'text' ? (
+        {tab === 'history' ? (
+          <PacketHistory key={packet.id} packet={packet} onSelect={onSelect} />
+        ) : tab === 'text' ? (
           <pre className="packet-text">{packet.text}</pre>
         ) : (
           <>

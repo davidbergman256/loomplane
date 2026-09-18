@@ -11,7 +11,9 @@ Use Node 24+, `npm ci`, then `npm run dev` and `npm run dev:web` in separate ter
 - `src/cli`: command-line interface.
 - `src/mcp`: agent protocol integration.
 - `src/adapters`: explicit imports from local source files.
+- `src/runner`: explicit command execution with packet files and freshness checks.
 - `apps/web`: human workbench.
+- `apps/demo`: standalone synthetic concept demonstration published to GitHub Pages.
 - `docs/specs`: architectural and API contracts.
 
 Use the same domain methods across transports. A route should not invent different scoping or mutation behavior. Derived context must retain provenance. Never describe an inferred or caller-reported record as verified fact.

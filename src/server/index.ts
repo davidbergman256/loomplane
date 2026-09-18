@@ -289,6 +289,25 @@ export function createLoomplaneServer(store: Store, options: ServerOptions = {})
         const checkMatch = path.match(/^\/api\/packets\/([a-zA-Z0-9_-]+)\/check$/);
         if (checkMatch && method === 'GET')
           return respond(res, 200, store.checkPacket(checkMatch[1]));
+        const compareMatch = path.match(/^\/api\/packets\/([a-zA-Z0-9_-]+)\/compare$/);
+        if (compareMatch && method === 'GET') {
+          const target = url.searchParams.get('to');
+          if (!target) throw new LoomplaneError('to packet ID is required');
+          assertResource('packets', target);
+          return respond(res, 200, store.comparePackets(compareMatch[1], target));
+        }
+        const historyMatch = path.match(/^\/api\/streams\/([a-zA-Z0-9_-]+)\/packets$/);
+        if (historyMatch && method === 'GET')
+          return respond(
+            res,
+            200,
+            store.listPackets(historyMatch[1], {
+              before: url.searchParams.get('before') ?? undefined,
+              limit: url.searchParams.has('limit')
+                ? Number(url.searchParams.get('limit'))
+                : undefined,
+            }),
+          );
         if (method === 'POST' && path === '/api/demo') return respond(res, 201, seedDemo(store));
         if (
           method === 'GET' &&

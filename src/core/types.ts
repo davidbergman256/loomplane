@@ -91,6 +91,50 @@ export interface Packet {
   conflicts: Conflict[];
   createdAt: string;
 }
+export interface PacketSummary extends Pick<
+  Packet,
+  'id' | 'projectId' | 'streamId' | 'task' | 'budget' | 'estimatedTokens' | 'createdAt'
+> {
+  capsuleCount: number;
+  omittedCount: number;
+  conflictCount: number;
+}
+export interface PacketPage {
+  items: PacketSummary[];
+  nextCursor: string | null;
+}
+export interface PacketValueChange<T> {
+  before: T;
+  after: T;
+  changed: boolean;
+}
+export interface PacketRevisionSnapshot {
+  manifest: ManifestItem;
+  revision: Revision;
+}
+export interface PacketCapsuleChange {
+  capsuleId: string;
+  changes: ('added' | 'removed' | 'revised' | 'mode')[];
+  before: PacketRevisionSnapshot | null;
+  after: PacketRevisionSnapshot | null;
+}
+/** Historical comparison only: no assertion of freshness, compatibility, or revalidation. */
+export interface PacketDiff {
+  projectId: string;
+  streamId: string;
+  fromPacketId: string;
+  toPacketId: string;
+  changed: boolean;
+  textChanged: boolean;
+  unchangedCapsules: number;
+  capsuleChanges: PacketCapsuleChange[];
+  task: PacketValueChange<string>;
+  budget: PacketValueChange<number>;
+  estimatedTokens: PacketValueChange<number>;
+  manifestOrder: PacketValueChange<string[]>;
+  omissions: PacketValueChange<Omission[]>;
+  conflicts: PacketValueChange<Conflict[]>;
+}
 export interface Drift {
   capsuleId: string;
   title: string;

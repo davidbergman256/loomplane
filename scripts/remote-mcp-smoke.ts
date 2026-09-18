@@ -112,6 +112,14 @@ try {
       }),
     );
     assert.equal(check.ok, true);
+    const comparison = parsed(
+      await writerMcp.client.callTool({
+        name: 'loomplane_compare_packets',
+        arguments: { fromPacketId: packet.id, toPacketId: packet.id },
+      }),
+    );
+    assert.equal(comparison.changed, false);
+    assert.equal(comparison.fromPacketId, packet.id);
     const receipt = parsed(
       await writerMcp.client.callTool({
         name: 'loomplane_start_receipt',

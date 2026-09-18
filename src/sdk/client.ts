@@ -10,6 +10,8 @@ import type {
   MountInput,
   Packet,
   PacketCheck,
+  PacketDiff,
+  PacketPage,
   Project,
   PublishCapsule,
   Receipt,
@@ -287,9 +289,34 @@ export class LoomplaneClient {
   getLatestPacket(streamId: string, options?: LoomplaneRequestOptions): Promise<Packet | null> {
     return this.getStreamState(streamId, options).then((state) => state.latestPacket);
   }
+  listPackets(
+    streamId: string,
+    options?: LoomplaneRequestOptions & { before?: string; limit?: number },
+  ): Promise<PacketPage> {
+    return this.request(
+      query(`/streams/${encodeURIComponent(streamId)}/packets`, {
+        before: options?.before,
+        limit: options?.limit,
+      }),
+      {},
+      options,
+    );
+  }
 
   checkPacket(packetId: string, options?: LoomplaneRequestOptions): Promise<PacketCheck> {
     return this.request(`/packets/${encodeURIComponent(packetId)}/check`, {}, options);
+  }
+
+  comparePackets(
+    fromPacketId: string,
+    toPacketId: string,
+    options?: LoomplaneRequestOptions,
+  ): Promise<PacketDiff> {
+    return this.request(
+      query(`/packets/${encodeURIComponent(fromPacketId)}/compare`, { to: toPacketId }),
+      {},
+      options,
+    );
   }
 
   search(

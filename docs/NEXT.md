@@ -4,19 +4,19 @@ The 0.1 preview is a working local/shared-server context runtime. The following 
 
 ## 1. Zero-setup concept demo and distribution
 
-Make the changed-contract scenario understandable in one minute. Provide a public, explicitly synthetic interactive demonstration and an installation path that does not require reading infrastructure docs. Use the real protocol semantics; distinguish a browser demonstration from a live multi-agent execution. Fix actual GitHub CI failures before further feature work.
+The static concept demo now implements the changed-contract scenario, and the repository has passed its first GitHub CI run. Publish and verify the Pages build, attach an installable preview, and watch for actual onboarding failures. The demo is synthetic and does not execute coding agents.
 
 ## 2. Better context coverage and adoption
 
-Measure the proportion of real tasks that record packets and invoke completion checks. Existing hooks are opt-in; they do not automatically capture everything. Add useful explicit workflow integrations and source-aware refresh suggestions, not an indiscriminate home-directory scanner. Importing a changed source file should not silently keep outdated content because its line URI is unchanged.
+Measure the proportion of real tasks that record packets and invoke completion checks. The explicit command runner supplies packet files and checks freshness before recording completion; it does not force a model to read those files. Hooks remain opt-in. Source re-import now updates managed records while preserving local edits as conflicts. Next, exercise two real coding clients and measure actual packet/check coverage.
 
 ## 3. Explainability under change
 
-Add a concise packet-to-packet diff and a stronger revalidation workflow. Help the developer decide whether a source change matters. A changed revision is not necessarily a semantic incompatibility. A refreshed packet is not proof that the work was rechecked.
+Historical packet diffs and bounded packet history are implemented in the core, transports and workbench. Next, strengthen the review/revalidation workflow around those comparisons. Help the developer decide whether a source change matters. A changed revision is not necessarily a semantic incompatibility. A refreshed packet is not proof that the work was rechecked.
 
 ## 4. Operational foundation
 
-Add bounded pagination, idempotency for retryable network writes, snapshot consistency across processes, explicit schema migrations and portable version compatibility. Measure realistic local workloads before claiming scale. Replace recursive graph traversal with bounded iterative traversal as larger graphs are supported. Basic safety, backup and scoped credentials stay open source.
+Packet history uses bounded insertion-order pagination, and composite reads now hold a coherent SQLite snapshot across concurrent clients. Extend pagination to other growing lists; add idempotency for retryable network writes, explicit schema migrations and portable version compatibility. Measure realistic local workloads before claiming scale. Replace recursive graph traversal with bounded iterative traversal as larger graphs are supported. Basic safety, backup and scoped credentials stay open source.
 
 ## 5. Enterprise validation
 

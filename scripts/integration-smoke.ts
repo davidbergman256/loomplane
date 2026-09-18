@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -46,6 +47,84 @@ try {
   assert.equal(duplicate.imported, 0);
   assert.equal(duplicate.skipped, 4);
   assert.match(store.getCapsule(codex.capsuleIds[0]!).evidence[0]!.uri, /#L2$/);
+
+  const changingMarkdownPath = join(temporaryDirectory, 'changing-context.md');
+  await writeFile(changingMarkdownPath, '# Managed source\n\nFirst imported value.\n');
+  const firstMarkdownImport = await importFile(store, {
+    projectId: project.id,
+    streamId: stream.id,
+    path: changingMarkdownPath,
+    format: 'markdown',
+  });
+  const unchangedMarkdownImport = await importFile(store, {
+    projectId: project.id,
+    streamId: stream.id,
+    path: changingMarkdownPath,
+    format: 'markdown',
+  });
+  await writeFile(changingMarkdownPath, '# Managed source\n\nSecond imported value.\n');
+  const changedMarkdownImport = await importFile(store, {
+    projectId: project.id,
+    streamId: stream.id,
+    path: changingMarkdownPath,
+    format: 'markdown',
+  });
+  const managedCapsuleId = firstMarkdownImport.capsuleIds[0]!;
+  assert.equal(unchangedMarkdownImport.imported, 0);
+  assert.equal(unchangedMarkdownImport.skipped, 1);
+  assert.equal(changedMarkdownImport.imported, 1);
+  assert.deepEqual(changedMarkdownImport.capsuleIds, [managedCapsuleId]);
+  assert.equal(store.getCapsule(managedCapsuleId).version, 2);
+  assert.equal(store.getRevisions(managedCapsuleId).length, 2);
+  assert.match(store.getCapsule(managedCapsuleId).body, /Second imported value/);
+
+  store.reviseCapsule(managedCapsuleId, {
+    expectedVersion: 2,
+    body: 'Human-maintained replacement that must survive re-import.',
+    author: 'human-editor',
+    changeNote: 'Manual correction',
+  });
+  await writeFile(changingMarkdownPath, '# Managed source\n\nThird imported value.\n');
+  const humanConflict = await importFile(store, {
+    projectId: project.id,
+    streamId: stream.id,
+    path: changingMarkdownPath,
+    format: 'markdown',
+  });
+  assert.equal(humanConflict.imported, 0);
+  assert.equal(humanConflict.skipped, 1);
+  assert.match(humanConflict.warnings.join('\n'), /conflict/i);
+  assert.equal(
+    store.getCapsule(managedCapsuleId).body,
+    'Human-maintained replacement that must survive re-import.',
+  );
+  assert.equal(store.getCapsule(managedCapsuleId).version, 3);
+
+  const changingJsonlPath = join(temporaryDirectory, 'changing-codex.jsonl');
+  await writeFile(
+    changingJsonlPath,
+    '{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"First line value"}]}}\n',
+  );
+  const firstJsonlImport = await importFile(store, {
+    projectId: project.id,
+    streamId: stream.id,
+    path: changingJsonlPath,
+    format: 'codex',
+  });
+  await writeFile(
+    changingJsonlPath,
+    '{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Changed line value"}]}}\n',
+  );
+  const changedJsonlImport = await importFile(store, {
+    projectId: project.id,
+    streamId: stream.id,
+    path: changingJsonlPath,
+    format: 'codex',
+  });
+  assert.equal(changedJsonlImport.imported, 1);
+  assert.deepEqual(changedJsonlImport.capsuleIds, firstJsonlImport.capsuleIds);
+  assert.equal(store.getCapsule(firstJsonlImport.capsuleIds[0]!).version, 2);
+  assert.equal(store.getCapsule(firstJsonlImport.capsuleIds[0]!).body, 'Changed line value');
   await assert.rejects(
     importFile(store, {
       projectId: project.id,

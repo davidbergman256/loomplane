@@ -13,6 +13,8 @@ import type {
   MountInput,
   Packet,
   PacketCheck,
+  PacketDiff,
+  PacketPage,
   Project,
   PublishCapsule,
   Receipt,
@@ -50,6 +52,11 @@ export interface McpPort {
   getCapsuleDetails(capsuleId: string): Awaitable<CapsuleDetails>;
   impact(capsuleId: string): Awaitable<Impact>;
   checkPacket(packetId: string): Awaitable<PacketCheck>;
+  comparePackets(fromPacketId: string, toPacketId: string): Awaitable<PacketDiff>;
+  listPackets(
+    streamId: string,
+    options?: { before?: string; limit?: number },
+  ): Awaitable<PacketPage>;
   startReceipt(packetId: string, agent: string): Awaitable<Receipt>;
   finishReceipt(receiptId: string, input: FinishReceiptInput): Awaitable<Receipt>;
   getReceiptDetails(receiptId: string): Awaitable<ReceiptDetails>;
@@ -125,6 +132,8 @@ function localPort(store: Store): McpPort {
     }),
     impact: (id) => store.impact(id),
     checkPacket: (id) => store.checkPacket(id),
+    comparePackets: (from, to) => store.comparePackets(from, to),
+    listPackets: (streamId, options) => store.listPackets(streamId, options),
     startReceipt: (packetId, agent) => store.startReceipt(packetId, agent),
     finishReceipt: (id, input) => store.finishReceipt(id, input),
     getReceiptDetails: (id) => {
@@ -149,6 +158,8 @@ function remotePort(client: LoomplaneClient): McpPort {
     getCapsuleDetails: (id) => client.getCapsule(id),
     impact: (id) => client.impact(id),
     checkPacket: (id) => client.checkPacket(id),
+    comparePackets: (from, to) => client.comparePackets(from, to),
+    listPackets: (streamId, options) => client.listPackets(streamId, options),
     startReceipt: (packetId, agent) => client.startReceipt(packetId, agent),
     finishReceipt: (id, input) => client.finishReceipt(id, input),
     getReceiptDetails: (id) => client.getReceipt(id),
@@ -340,6 +351,33 @@ export function createMcpServerForPort(port: McpPort): McpServer {
       annotations: { readOnlyHint: true },
     },
     async ({ packetId }) => execute(() => port.checkPacket(packetId)),
+  );
+  server.registerTool(
+    'loomplane_compare_packets',
+    {
+      title: 'Compare context packets',
+      description: `Explain selected revision, task, budget, omission and conflict changes between two immutable packets from the same stream. A diff does not prove semantic compatibility or that code was revalidated. ${historicalNotice}`,
+      inputSchema: { fromPacketId: z.string().min(1), toPacketId: z.string().min(1) },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ fromPacketId, toPacketId }) =>
+      execute(() => port.comparePackets(fromPacketId, toPacketId)),
+  );
+  server.registerTool(
+    'loomplane_list_packets',
+    {
+      title: 'Browse packet history',
+      description:
+        'List packet summaries newest first, with an optional continuation cursor. Use packet IDs to compare historical context.',
+      inputSchema: {
+        streamId: z.string().min(1),
+        before: z.string().min(1).optional(),
+        limit: z.number().int().min(1).max(50).optional(),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ streamId, before, limit }) =>
+      execute(() => port.listPackets(streamId, { before, limit })),
   );
   server.registerTool(
     'loomplane_start_receipt',

@@ -1,0 +1,23 @@
+name: Describe a parallel-context workflow
+description: Help shape the product around a concrete coordination problem.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Which independent tasks need shared context?
+      description: Describe the tools, agents, and shared assumption. Synthetic examples are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: change
+    attributes:
+      label: What happens when that assumption changes?
+      description: How do you notice today, and what work does it cause?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What would a useful outcome look like?
+      description: A concrete workflow improvement helps more than a feature name.

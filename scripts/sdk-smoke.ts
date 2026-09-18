@@ -73,6 +73,33 @@ try {
     changeNote: 'Synthetic revision',
   });
   assert.equal((await client.checkPacket(packet.id)).ok, false);
+  const refreshed = await client.compile({
+    streamId: consumer.id,
+    task: packet.task,
+    budget: packet.budget,
+  });
+  const delta = await client.comparePackets(packet.id, refreshed.id);
+  assert.equal(delta.changed, true);
+  assert.deepEqual(delta.capsuleChanges[0].changes, ['revised']);
+  assert.equal(delta.capsuleChanges[0].before?.revision.version, 1);
+  assert.equal(delta.capsuleChanges[0].after?.revision.version, 2);
+  const recent = await client.listPackets(consumer.id, { limit: 1 });
+  assert.equal(recent.items[0].id, refreshed.id);
+  assert.equal(recent.nextCursor, refreshed.id);
+  assert.equal('text' in recent.items[0], false);
+  // An insert between pages must not shift the cursor and duplicate older entries.
+  await client.compile({ streamId: consumer.id });
+  const older = await client.listPackets(consumer.id, { before: recent.nextCursor!, limit: 1 });
+  assert.deepEqual(
+    older.items.map((p) => p.id),
+    [packet.id],
+  );
+  assert.equal(older.nextCursor, null);
+  const other = await client.compile({ streamId: producer.id });
+  await assert.rejects(
+    client.listPackets(consumer.id, { before: other.id }),
+    (error) => error instanceof LoomplaneApiError && error.status === 404,
+  );
 
   await assert.rejects(
     client.getPacket('pkt_missing'),

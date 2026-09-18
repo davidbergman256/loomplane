@@ -1,8 +1,9 @@
+import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { basename, extname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { Store } from '../core/store.js';
-import type { ImportResult, PublishCapsule } from '../core/types.js';
+import type { Capsule, Evidence, ImportResult, PublishCapsule } from '../core/types.js';
 
 export type ImportFormat = 'markdown' | 'codex' | 'claude' | 'auto';
 
@@ -21,6 +22,16 @@ interface Segment {
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const MAX_SEGMENT_CHARS = 64_000;
+const STATE_URI_PREFIX = 'urn:loomplane:import-state:sha256:';
+
+type ManagedInput = Omit<PublishCapsule, 'projectId' | 'streamId' | 'kind'> & {
+  title: string;
+  body: string;
+  author: string;
+  tags: string[];
+  evidence: Evidence[];
+  priority: number;
+};
 
 function textParts(content: unknown, allowedTypes: ReadonlySet<string>): string[] {
   if (typeof content === 'string') return content.trim() ? [content.trim()] : [];
@@ -98,6 +109,63 @@ function lineUri(path: string, line?: number, endLine?: number): string {
   return `${uri}#L${line}${endLine && endLine !== line ? `-L${endLine}` : ''}`;
 }
 
+function identityUri(path: string, format: Exclude<ImportFormat, 'auto'>, line?: number): string {
+  return `${pathToFileURL(path).href}#import-format=${format}${line === undefined ? '' : `&record-line=${line}`}`;
+}
+
+function evidenceWithoutState(evidence: Evidence[]): Evidence[] {
+  return evidence.filter((item) => !item.uri.startsWith(STATE_URI_PREFIX));
+}
+
+function stateDigest(
+  input: Pick<ManagedInput, 'title' | 'body' | 'author' | 'tags' | 'evidence' | 'priority'> & {
+    dependencies?: unknown[];
+  },
+): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        title: input.title,
+        body: input.body,
+        author: input.author,
+        tags: input.tags,
+        evidence: evidenceWithoutState(input.evidence),
+        priority: input.priority,
+        dependencies: input.dependencies ?? [],
+      }),
+    )
+    .digest('hex');
+}
+
+function storedStateDigest(capsule: Capsule): string | null {
+  const uri = capsule.evidence.find((item) => item.uri.startsWith(STATE_URI_PREFIX))?.uri;
+  const digest = uri?.slice(STATE_URI_PREFIX.length);
+  return digest && /^[0-9a-f]{64}$/.test(digest) ? digest : null;
+}
+
+function managedStateDigest(capsule: Capsule): string {
+  return stateDigest({
+    title: capsule.title,
+    body: capsule.body,
+    author: capsule.author,
+    tags: capsule.tags,
+    evidence: capsule.evidence,
+    priority: capsule.priority,
+    dependencies: capsule.dependencies ?? [],
+  });
+}
+
+function withStateEvidence(input: ManagedInput): ManagedInput {
+  const digest = stateDigest({ ...input, dependencies: input.dependencies ?? [] });
+  return {
+    ...input,
+    evidence: [
+      ...evidenceWithoutState(input.evidence),
+      { label: 'Imported state digest', uri: `${STATE_URI_PREFIX}${digest}` },
+    ],
+  };
+}
+
 function segmentTitle(
   format: 'codex' | 'claude',
   role: 'user' | 'assistant',
@@ -108,16 +176,121 @@ function segmentTitle(
   return `${source} ${role} message — ${basename(path)}:${line}`.slice(0, 240);
 }
 
-function publish(
+function findExisting(
+  store: Store,
+  projectId: string,
+  stableUri: string,
+  provenanceUri: string,
+  format: Exclude<ImportFormat, 'auto'>,
+): Capsule | null {
+  const exact =
+    store.findBySource(projectId, stableUri) ?? store.findBySource(projectId, provenanceUri);
+  if (exact || format !== 'markdown') return exact;
+  const baseUri = stableUri.split('#')[0]!;
+  return (
+    store
+      .listCapsules(projectId)
+      .find(
+        (capsule) =>
+          capsule.tags.includes('imported') &&
+          capsule.tags.includes('markdown') &&
+          capsule.evidence.some((item) => item.uri.split('#')[0] === baseUri),
+      ) ?? null
+  );
+}
+
+function sameStringArray(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function legacyManaged(capsule: Capsule, incoming: ManagedInput, provenanceUri: string): boolean {
+  return (
+    capsule.version === 1 &&
+    capsule.status === 'active' &&
+    capsule.kind === 'artifact' &&
+    capsule.author === incoming.author &&
+    capsule.priority === incoming.priority &&
+    sameStringArray(capsule.tags, incoming.tags) &&
+    !capsule.dependencies?.length &&
+    capsule.evidence.some((item) => item.uri === provenanceUri)
+  );
+}
+
+function legacyIdentical(capsule: Capsule, incoming: ManagedInput): boolean {
+  return (
+    capsule.title === incoming.title &&
+    capsule.body === incoming.body &&
+    capsule.author === incoming.author &&
+    capsule.priority === incoming.priority &&
+    sameStringArray(capsule.tags, incoming.tags)
+  );
+}
+
+function importManaged(
   store: Store,
   input: ImportFileInput,
-  capsule: Omit<PublishCapsule, 'projectId' | 'streamId'>,
-): string {
-  return store.publishCapsule({
-    projectId: input.projectId,
-    streamId: input.streamId ?? null,
-    ...capsule,
-  }).id;
+  format: Exclude<ImportFormat, 'auto'>,
+  stableUri: string,
+  provenanceUri: string,
+  candidate: ManagedInput,
+  result: ImportResult,
+  sourceLabel: string,
+): void {
+  const managed = withStateEvidence(candidate);
+  const incomingDigest = stateDigest({ ...managed, dependencies: managed.dependencies ?? [] });
+  const existing = findExisting(store, input.projectId, stableUri, provenanceUri, format);
+  if (!existing) {
+    const capsule = store.publishCapsule({
+      projectId: input.projectId,
+      streamId: input.streamId ?? null,
+      kind: 'artifact',
+      ...managed,
+    });
+    result.imported++;
+    result.capsuleIds.push(capsule.id);
+    return;
+  }
+
+  const expectedStreamId = input.streamId ?? null;
+  const storedDigest = storedStateDigest(existing);
+  const currentDigest = managedStateDigest(existing);
+  const hasHumanChanges =
+    existing.status !== 'active' ||
+    existing.kind !== 'artifact' ||
+    existing.streamId !== expectedStreamId ||
+    (storedDigest
+      ? currentDigest !== storedDigest
+      : !legacyManaged(existing, candidate, provenanceUri));
+  if (hasHumanChanges) {
+    result.skipped++;
+    result.warnings.push(
+      `Import conflict for ${sourceLabel}: capsule ${existing.id} has local changes; source content was not applied`,
+    );
+    return;
+  }
+
+  const unchanged = storedDigest
+    ? incomingDigest === storedDigest
+    : legacyIdentical(existing, candidate);
+  if (unchanged) {
+    result.skipped++;
+    return;
+  }
+
+  const revised = store.reviseCapsule(existing.id, {
+    expectedVersion: existing.version,
+    title: managed.title,
+    body: managed.body,
+    author: managed.author,
+    tags: managed.tags,
+    evidence: managed.evidence,
+    priority: managed.priority,
+    dependencies: managed.dependencies ?? [],
+    changeNote: `Re-imported changed explicit source: ${sourceLabel}`,
+  });
+  result.imported++;
+  result.capsuleIds.push(revised.id);
+  result.warnings.push(`Updated capsule ${revised.id} from changed source ${sourceLabel}`);
 }
 
 export async function importFile(store: Store, input: ImportFileInput): Promise<ImportResult> {
@@ -155,29 +328,33 @@ export async function importFile(store: Store, input: ImportFileInput): Promise<
     if (body.length > MAX_SEGMENT_CHARS)
       throw new Error(`Markdown content exceeds ${MAX_SEGMENT_CHARS} characters`);
     const endLine = source.split(/\r?\n/).length;
-    const uri = lineUri(absolutePath, 1, endLine);
-    if (store.findBySource(input.projectId, uri)) {
-      result.skipped++;
-      result.warnings.push('Skipped Markdown already imported from the same source lines');
-      return result;
-    }
-    result.capsuleIds.push(
-      publish(store, input, {
-        kind: 'artifact',
+    const provenanceUri = lineUri(absolutePath, 1, endLine);
+    const stableUri = identityUri(absolutePath, format);
+    importManaged(
+      store,
+      input,
+      format,
+      stableUri,
+      provenanceUri,
+      {
         title: markdownTitle(source, absolutePath),
         body,
         author: 'markdown-import',
         tags: ['imported', 'markdown'],
+        priority: 50,
+        dependencies: [],
         evidence: [
           {
             label: `${basename(absolutePath)} lines 1-${endLine}`,
-            uri,
+            uri: provenanceUri,
             excerpt: body.slice(0, 300),
           },
+          { label: `Imported Markdown file ${basename(absolutePath)}`, uri: stableUri },
         ],
-      }),
+      },
+      result,
+      basename(absolutePath),
     );
-    result.imported++;
     return result;
   }
 
@@ -207,28 +384,33 @@ export async function importFile(store: Store, input: ImportFileInput): Promise<
       );
       continue;
     }
-    const uri = lineUri(absolutePath, line);
-    if (store.findBySource(input.projectId, uri)) {
-      result.skipped++;
-      continue;
-    }
-    result.capsuleIds.push(
-      publish(store, input, {
-        kind: 'artifact',
+    const provenanceUri = lineUri(absolutePath, line);
+    const stableUri = identityUri(absolutePath, format, line);
+    importManaged(
+      store,
+      input,
+      format,
+      stableUri,
+      provenanceUri,
+      {
         title: segmentTitle(format, segment.role!, absolutePath, line),
         body: segment.text,
         author: `${format}-${segment.role}`,
         tags: ['imported', format, segment.role!],
+        priority: 50,
+        dependencies: [],
         evidence: [
           {
             label: `${basename(absolutePath)} line ${line}`,
-            uri,
+            uri: provenanceUri,
             excerpt: segment.text.slice(0, 300),
           },
+          { label: `Imported ${format} record ${basename(absolutePath)}:${line}`, uri: stableUri },
         ],
-      }),
+      },
+      result,
+      `${basename(absolutePath)} line ${line}`,
     );
-    result.imported++;
   }
 
   if (!result.imported && !result.skipped) result.warnings.push('No importable records found');
