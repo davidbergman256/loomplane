@@ -24,6 +24,16 @@ Loomplane is an early, working open-source prototype. It is not an autonomous co
 
 Requires **Node.js 24+**. SQLite is bundled with Node; no database service is needed.
 
+Install the [published preview](https://github.com/davidbergman256/loomplane/releases/tag/v0.2.0):
+
+```sh
+npm install -g https://github.com/davidbergman256/loomplane/releases/download/v0.2.0/loomplane-0.2.0.tgz
+loomplane demo
+loomplane serve
+```
+
+Or run from source:
+
 ```sh
 git clone https://github.com/davidbergman256/loomplane.git
 cd loomplane
@@ -144,7 +154,7 @@ Use absolute paths: agent clients may start in another working directory. See [i
 loomplane run --task "Implement the usage panel" -- your-agent-command arguments
 ```
 
-The command receives `LOOMPLANE_CONTEXT_FILE`, `LOOMPLANE_PACKET_FILE`, `LOOMPLANE_PACKET_ID`, and `LOOMPLANE_DB`. Configure your command to read the context file; setting an environment variable alone does not make a model use it. Arguments after `--` are launched directly, without an implicit shell. Child output stays on its original streams, and the runner prints its result to stderr.
+Use `--url SERVER --stream ID` with `LOOMPLANE_API_TOKEN` for a shared-server run; optional source checks still happen locally. In local mode, the command receives `LOOMPLANE_CONTEXT_FILE`, `LOOMPLANE_PACKET_FILE`, `LOOMPLANE_PACKET_ID`, and `LOOMPLANE_DB`. Configure your command to read the context file; setting an environment variable alone does not make a model use it. Arguments after `--` are launched directly, without an implicit shell. Child output stays on its original streams, and the runner prints its result to stderr.
 
 A nonzero command exit is preserved. A successful command whose tracked context changed exits **2** and leaves an abandoned receipt. `--root .` also checks explicit source fingerprints. `--keep-files` retains the packet files for inspection. See [the complete runner example](examples/runner) and its boundaries.
 
@@ -196,6 +206,8 @@ loomplane serve --auth --host 0.0.0.0
 
 The secret is returned once. The server stores its digest. `reader` keys can inspect one project; `writer` keys can also mutate that project. Scoped credentials cannot create projects, enumerate other projects, or load demo data. `loomplane access revoke KEY_ID` stops further requests and closes that key's event subscriptions.
 
+Optional idempotency keys make POST/PATCH writes safely repeatable for 24 hours under the same credential identity. The SDK exposes this explicitly without automatic retries; see [safe write retries](docs/specs/idempotency.md).
+
 Use TLS through a reverse proxy for remote access. This is a single-server team prototype, with scoped service credentials rather than human identity or SSO. The [HTTP SDK](examples/sdk) and [remote MCP mode](examples/integrations) support bearer authentication. The workbench offers token sign-in and keeps credentials in browser session storage; reader controls are disabled. See the [team runtime design](docs/specs/team-runtime.md) for the boundaries.
 
 ## Open source and enterprise
@@ -205,6 +217,8 @@ The core is **Apache-2.0**: local storage, CLI, MCP, workbench, versioning, pack
 The commercial thesis is operating shared context across an organization: managed synchronization, source-aware access controls, identity, policy, retention, deployment options, and support. Those enterprise capabilities are **not implemented** in this prototype. The [strategy documents](docs/strategy) explain the wedge, competitive alternatives, pilot design, and assumptions to test.
 
 ## Current limits
+
+A [reproducible local baseline](docs/scaling-baseline.md) measured the shipped v0.1 core at 100 and 500 synthetic capsules. It identifies whole-workspace payloads as a concrete next optimization; it is not a production capacity claim.
 
 - Single-node SQLite, no cloud synchronization, enterprise identity, or source-document permission inheritance.
 - Optional scoped service credentials provide project-level reader/writer access. They are not per-person identity, document-level authorization, or proof of production hardening. `LOOMPLANE_TOKEN` is a separate optional instance-wide administrator secret.

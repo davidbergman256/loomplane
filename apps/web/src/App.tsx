@@ -327,7 +327,7 @@ export default function App() {
           </button>
           <div className="sidebar-footnote">
             <span>{auth.required ? `${auth.role} access` : 'Open source'}</span>
-            {auth.required ? <button onClick={auth.logout}>Sign out</button> : <span>v0.1</span>}
+            {auth.required ? <button onClick={auth.logout}>Sign out</button> : <span>v0.2</span>}
           </div>
         </div>
       </aside>

@@ -6,6 +6,7 @@ import { compileContext, detectConflicts } from './compiler.js';
 import { invariant, requiredText, LoomplaneError } from './errors.js';
 import { validatePortableProject } from './portable.js';
 import { comparePacketSnapshots } from './packet-diff.js';
+import { serializeIdempotencyResult } from './idempotency.js';
 import type {
   AuditEvent,
   Capsule,
@@ -126,7 +127,7 @@ export class Store {
       if (this.db.prepare("SELECT 1 FROM sqlite_schema WHERE name='schema_version'").get()) {
         const versions = this.db.prepare('SELECT version FROM schema_version').all();
         invariant(
-          versions.length === 1 && versions[0].version === 1,
+          versions.length === 1 && (versions[0].version === 1 || versions[0].version === 2),
           'Unsupported database schema version',
           500,
           'SCHEMA_VERSION',
@@ -136,7 +137,7 @@ export class Store {
       this.transaction(() => {
         this.db.exec(`
       CREATE TABLE IF NOT EXISTS schema_version(version INTEGER NOT NULL);
-      INSERT INTO schema_version SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM schema_version);
+      INSERT INTO schema_version SELECT 2 WHERE NOT EXISTS(SELECT 1 FROM schema_version);
       CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS streams(id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), data TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS streams_project ON streams(project_id);
@@ -152,14 +153,17 @@ export class Store {
       CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL REFERENCES projects(id), type TEXT NOT NULL, entity_id TEXT NOT NULL, actor TEXT NOT NULL, data TEXT NOT NULL, created_at TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS events_project ON events(project_id,id);
       CREATE VIRTUAL TABLE IF NOT EXISTS capsule_search USING fts5(capsule_id UNINDEXED, project_id UNINDEXED, title, body, tags, tokenize='unicode61');
+      CREATE TABLE IF NOT EXISTS idempotency(scope TEXT NOT NULL, key TEXT NOT NULL, operation TEXT NOT NULL, fingerprint TEXT NOT NULL, result TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY(scope,key));
+      CREATE INDEX IF NOT EXISTS idempotency_expiry ON idempotency(expires_at);
     `);
         const versions = this.db.prepare('SELECT version FROM schema_version').all();
         invariant(
-          versions.length === 1 && versions[0].version === 1,
+          versions.length === 1 && (versions[0].version === 1 || versions[0].version === 2),
           'Unsupported database schema version',
           500,
           'SCHEMA_VERSION',
         );
+        this.db.exec('UPDATE schema_version SET version=2 WHERE version=1');
       });
     } catch (error) {
       this.db.close();
@@ -175,15 +179,98 @@ export class Store {
     );
   }
   private transaction<T>(fn: () => T): T {
-    this.db.exec('BEGIN IMMEDIATE');
+    const savepoint = this.db.isTransaction ? id('savepoint') : null;
+    this.db.exec(savepoint ? `SAVEPOINT ${savepoint}` : 'BEGIN IMMEDIATE');
     try {
       const result = fn();
-      this.db.exec('COMMIT');
+      this.db.exec(savepoint ? `RELEASE SAVEPOINT ${savepoint}` : 'COMMIT');
       return result;
     } catch (error) {
-      this.db.exec('ROLLBACK');
+      if (savepoint) {
+        this.db.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+        this.db.exec(`RELEASE SAVEPOINT ${savepoint}`);
+      } else this.db.exec('ROLLBACK');
       throw error;
     }
+  }
+  idempotent<T>(
+    input: { scope: string; key: string; operation: string; fingerprint: string },
+    callback: () => T,
+  ): { value: T; replayed: boolean } {
+    invariant(
+      input &&
+        typeof input.scope === 'string' &&
+        input.scope.trim().length > 0 &&
+        input.scope.length <= 256 &&
+        typeof input.key === 'string' &&
+        input.key.length >= 1 &&
+        input.key.length <= 128 &&
+        !/[^A-Za-z0-9._:-]/.test(input.key) &&
+        typeof input.operation === 'string' &&
+        input.operation.trim().length > 0 &&
+        input.operation.length <= 500 &&
+        typeof input.fingerprint === 'string' &&
+        input.fingerprint.length === 64 &&
+        /^[0-9a-f]{64}$/i.test(input.fingerprint) &&
+        typeof callback === 'function',
+      'Invalid idempotency scope, key, operation or fingerprint',
+      400,
+      'INVALID_IDEMPOTENCY_INPUT',
+    );
+    invariant(
+      Object.prototype.toString.call(callback) !== '[object AsyncFunction]',
+      'Idempotency callbacks must be synchronous',
+      400,
+      'INVALID_IDEMPOTENCY_RESULT',
+    );
+    const { scope, key, operation } = input;
+    const fingerprint = input.fingerprint.toLowerCase();
+    return this.transaction(() => {
+      const timestamp = Date.now();
+      this.db.prepare('DELETE FROM idempotency WHERE expires_at<=?').run(timestamp);
+      const existing = this.db
+        .prepare('SELECT operation,fingerprint,result FROM idempotency WHERE scope=? AND key=?')
+        .get(scope, key);
+      if (existing) {
+        invariant(
+          existing.operation === operation && existing.fingerprint === fingerprint,
+          'Idempotency key was already used for a different operation or body',
+          409,
+          'IDEMPOTENCY_CONFLICT',
+        );
+        return { value: JSON.parse(String(existing.result)) as T, replayed: true };
+      }
+      const checkCapacity = () =>
+        invariant(
+          Number(
+            this.db.prepare('SELECT COUNT(*) AS n FROM idempotency WHERE scope=?').get(scope)!.n,
+          ) < 10000,
+          'Idempotency scope has reached its 10000-record limit',
+          429,
+          'IDEMPOTENCY_CAPACITY',
+        );
+      checkCapacity();
+      const value = callback();
+      const serialized = serializeIdempotencyResult(value);
+      // A nested idempotent call may have consumed the final available slot.
+      checkCapacity();
+      const createdAt = Date.now();
+      this.db
+        .prepare(
+          'INSERT INTO idempotency(scope,key,operation,fingerprint,result,created_at,expires_at) VALUES(?,?,?,?,?,?,?)',
+        )
+        .run(
+          scope,
+          key,
+          operation,
+          fingerprint,
+          serialized,
+          createdAt,
+          createdAt + 24 * 60 * 60 * 1000,
+        );
+      // Return the JSON representation on first execution too, matching historical replays.
+      return { value: JSON.parse(serialized) as T, replayed: false };
+    });
   }
   private readSnapshot<T>(fn: () => T): T {
     // Composite reads share their caller's snapshot, including an active write transaction.

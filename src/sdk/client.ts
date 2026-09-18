@@ -38,6 +38,8 @@ export interface LoomplaneRequestOptions {
   signal?: AbortSignal;
   /** Per-request timeout override. Set to 0 to disable. */
   timeoutMs?: number;
+  /** Optional safe-retry key for one explicit POST or PATCH. The client never retries automatically. */
+  idempotencyKey?: string;
 }
 
 export interface HealthResult {
@@ -173,7 +175,18 @@ export class LoomplaneClient {
     options?: LoomplaneRequestOptions,
   ): Promise<T> {
     // Writes are attempted once. Callers decide if and how an operation is safe to retry.
-    return this.request<T>(path, { method, body: JSON.stringify(body) }, options);
+    return this.request<T>(
+      path,
+      {
+        method,
+        body: JSON.stringify(body),
+        headers:
+          options?.idempotencyKey === undefined
+            ? undefined
+            : { 'Idempotency-Key': options.idempotencyKey },
+      },
+      options,
+    );
   }
 
   health(options?: LoomplaneRequestOptions): Promise<HealthResult> {

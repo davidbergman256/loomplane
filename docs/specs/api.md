@@ -4,7 +4,7 @@ All endpoints below JSON, no /v1 prefix; base `/api`. Errors `{error: string, co
 
 | Method | Path                            | Body / result                                                              |
 | ------ | ------------------------------- | -------------------------------------------------------------------------- |
-| GET    | /api/health                     | `{ok:true,version:'0.1.0'}`                                                |
+| GET    | /api/health                     | `{ok:true,version:'0.2.0'}`                                                |
 | GET    | /api/snapshot?projectId=ID      | `Snapshot`, defaults first project                                         |
 | GET    | /api/projects                   | `Project[]`                                                                |
 | POST   | /api/projects                   | `CreateProject` → `Project`                                                |
@@ -74,3 +74,7 @@ Capsule publication and revision accept `dependencies: [{capsuleId,version}]`. R
 Evidence may contain `fingerprint:{path,sha256,bytes,gitCommit?}`. Paths are relative and cannot traverse upward. Capture is CLI-only with `loomplane source attach CAPSULE --file FILE --root ROOT --expected-version N`. It stores a SHA-256 digest and path, not source content. `loomplane check --packet ID --root ROOT` also checks source files from that packet's exact revisions. Source verification never writes new capsule revisions.
 
 HTTP/MCP context checks validate database revisions; they do not read local files. Source fingerprints are not automatically refreshed and are not a semantic claim about whether a file change invalidates the context. No fingerprint means no file-level coverage, and callers should inspect the returned checked count.
+
+## Retrying network writes
+
+Version 0.2 accepts optional `Idempotency-Key` on JSON POST/PATCH writes. A repeated operation/body under the same credential identity returns its original status/body and `Idempotency-Replayed: true`; its first commit returns `false`. A changed operation/body with the same active key is a 409 conflict. Keys expire after 24 hours. Authorization is checked on every replay, and failed writes do not reserve a key. DELETE with a key is rejected. The SDK's optional `idempotencyKey` sends this header for its POST/PATCH writes and adds no automatic retries. See [the complete replay and migration contract](idempotency.md).

@@ -1,6 +1,6 @@
 {
   "name": "loomplane",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": false,
   "description": "Shared, versioned context for parallel coding agents.",
   "type": "module",
@@ -45,7 +45,10 @@
     "prepack": "npm run build",
     "smoke:diff": "tsx scripts/packet-diff-smoke.ts",
     "smoke:runner": "tsx scripts/runner-smoke.ts",
-    "smoke:consistency": "tsx scripts/consistency-smoke.ts"
+    "smoke:consistency": "tsx scripts/consistency-smoke.ts",
+    "smoke:idempotency": "tsx scripts/idempotency-store-smoke.ts && tsx scripts/idempotency-http-smoke.ts",
+    "smoke:remote-runner": "tsx scripts/remote-runner-smoke.ts",
+    "benchmark": "tsx scripts/benchmark.ts"
   },
   "dependencies": {
     "@fontsource-variable/dm-sans": "^5.3.0",

@@ -26,4 +26,6 @@ jobs:
       - run: npm run smoke:diff
       - run: npm run smoke:runner
       - run: npm run smoke:consistency
+      - run: npm run smoke:idempotency
+      - run: npm run smoke:remote-runner
       - run: npm run build

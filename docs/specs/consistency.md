@@ -10,7 +10,7 @@ The boundary is one synchronous Store call. It does not combine separate API cal
 
 ## Opening databases
 
-The constructor checks an existing `schema_version` before changing journal mode or creating tables. It accepts exactly one version row with value `1`; unknown versions are rejected with `SCHEMA_VERSION`, and the connection is closed on failure. Supported/new database initialization is atomic. This is a version guard, not a migration framework or a schema-integrity audit.
+The constructor checks an existing `schema_version` before changing journal mode or creating tables. It accepts exactly one version row with value `1` or `2`, migrates version 1 transactionally to version 2, and creates new databases at version 2; unknown versions are rejected with `SCHEMA_VERSION`, and the connection is closed on failure. Supported/new database initialization is atomic. Version 2 adds the durable idempotency ledger. This is one explicit migration, not a general migration framework or a schema-integrity audit. Version 0.1 of the application refuses a version-2 database; restore a pre-upgrade archive into a separate database when trying an older release.
 
 ## Regression scenario
 

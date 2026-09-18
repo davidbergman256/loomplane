@@ -169,7 +169,7 @@ function remotePort(client: LoomplaneClient): McpPort {
 
 export function createMcpServerForPort(port: McpPort): McpServer {
   const server = new McpServer(
-    { name: 'loomplane', version: '0.1.0' },
+    { name: 'loomplane', version: '0.2.0' },
     {
       instructions: `Loomplane coordinates versioned context across parallel work streams. ${historicalNotice}`,
     },

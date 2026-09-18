@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0 — shared-server reliability
+
+- Optional credential-scoped idempotency keys return the original result when a JSON POST/PATCH write is retried within 24 hours. Domain mutations and their replay records commit atomically, including across processes.
+- Schema version 1 migrates transactionally to version 2. Export before upgrading if you need a portable pre-upgrade archive; in-place downgrade is not supported.
+- The command runner can use an authenticated shared server, while optional source fingerprint checks still read only files under an explicitly chosen local root.
+- Internal development used two Loomplane streams and exact shared-contract packets. This is internal use, not customer validation.
+
 ## 0.1.0 — first public preview
 
 Loomplane starts with one concrete coordination problem: an agent changes a shared contract while other tasks are still using its old revision.

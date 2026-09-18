@@ -4,6 +4,7 @@ import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { timingSafeEqual } from 'node:crypto';
 import { Store, LoomplaneError } from '../core/store.js';
+import { idempotencyFingerprint } from '../core/idempotency.js';
 import { AccessManager, type AccessKey } from './access.js';
 import { seedDemo } from '../core/demo.js';
 
@@ -215,6 +216,41 @@ export function createLoomplaneServer(store: Store, options: ServerOptions = {})
           if (method === 'PATCH' && /^\/api\/capsules\/[a-zA-Z0-9_-]+$/.test(path))
             assertCapsuleReferences(await requestBody());
         }
+        const rawIdempotencyKey = req.headers['idempotency-key'];
+        if (Array.isArray(rawIdempotencyKey))
+          throw new LoomplaneError(
+            'Idempotency-Key must be a single value',
+            400,
+            'INVALID_IDEMPOTENCY_INPUT',
+          );
+        if (method === 'DELETE' && rawIdempotencyKey !== undefined)
+          throw new LoomplaneError(
+            'Idempotency-Key is supported only for JSON POST and PATCH requests',
+            400,
+            'INVALID_IDEMPOTENCY_INPUT',
+          );
+        const idempotencyScope = principal
+          ? `key:${principal.id}`
+          : authenticatedAdmin
+            ? 'admin:instance'
+            : 'local:instance';
+        const writeJson = async <T>(status: number, mutation: (input: any) => T) => {
+          const input = await requestBody();
+          // Authorization is deliberately current immediately before both a replay and a mutation.
+          assertCurrentPrincipal();
+          if (rawIdempotencyKey === undefined) return respond(res, status, mutation(input));
+          const result = store.idempotent(
+            {
+              scope: idempotencyScope,
+              key: rawIdempotencyKey,
+              operation: `${method} ${path}`,
+              fingerprint: idempotencyFingerprint(input),
+            },
+            () => ({ status, body: mutation(input) }),
+          );
+          res.setHeader('Idempotency-Replayed', result.replayed ? 'true' : 'false');
+          return respond(res, result.value.status, result.value.body);
+        };
         if (
           method !== 'GET' &&
           method !== 'DELETE' &&
@@ -222,7 +258,7 @@ export function createLoomplaneServer(store: Store, options: ServerOptions = {})
         )
           throw new LoomplaneError('Use application/json', 415, 'CONTENT_TYPE');
         if (method === 'GET' && path === '/api/health')
-          return respond(res, 200, { ok: true, version: '0.1.0' });
+          return respond(res, 200, { ok: true, version: '0.2.0' });
         if (method === 'GET' && path === '/api/changes') {
           res.writeHead(200, {
             'Content-Type': 'text/event-stream',
@@ -259,19 +295,17 @@ export function createLoomplaneServer(store: Store, options: ServerOptions = {})
             principal ? [store.getProject(principal.projectId)] : store.listProjects(),
           );
         if (method === 'POST' && path === '/api/projects')
-          return respond(res, 201, store.createProject(await requestBody()));
+          return await writeJson(201, (input) => store.createProject(input));
         if (method === 'POST' && path === '/api/streams')
-          return respond(res, 201, store.createStream(await requestBody()));
+          return await writeJson(201, (input) => store.createStream(input));
         if (method === 'POST' && path === '/api/capsules')
-          return respond(res, 201, store.publishCapsule(await requestBody()));
+          return await writeJson(201, (input) => store.publishCapsule(input));
         if (method === 'POST' && path === '/api/mounts')
-          return respond(res, 201, store.mount(await requestBody()));
+          return await writeJson(201, (input) => store.mount(input));
         if (method === 'POST' && path === '/api/compile')
-          return respond(res, 201, store.compile(await requestBody()));
-        if (method === 'POST' && path === '/api/receipts') {
-          const input = await requestBody();
-          return respond(res, 201, store.startReceipt(input.packetId, input.agent));
-        }
+          return await writeJson(201, (input) => store.compile(input));
+        if (method === 'POST' && path === '/api/receipts')
+          return await writeJson(201, (input) => store.startReceipt(input.packetId, input.agent));
         if (method === 'GET' && path === '/api/receipts') {
           if (!projectId) throw new LoomplaneError('projectId is required');
           return respond(res, 200, store.listReceipts(projectId));
@@ -283,7 +317,7 @@ export function createLoomplaneServer(store: Store, options: ServerOptions = {})
             check: store.checkPacket(store.getReceipt(receiptMatch[1]).packetId),
           });
         if (receiptMatch && method === 'PATCH')
-          return respond(res, 200, store.finishReceipt(receiptMatch[1], await requestBody()));
+          return await writeJson(200, (input) => store.finishReceipt(receiptMatch[1], input));
         const impactMatch = path.match(/^\/api\/capsules\/([a-zA-Z0-9_-]+)\/impact$/);
         if (impactMatch && method === 'GET') return respond(res, 200, store.impact(impactMatch[1]));
         const checkMatch = path.match(/^\/api\/packets\/([a-zA-Z0-9_-]+)\/check$/);
@@ -308,7 +342,8 @@ export function createLoomplaneServer(store: Store, options: ServerOptions = {})
                 : undefined,
             }),
           );
-        if (method === 'POST' && path === '/api/demo') return respond(res, 201, seedDemo(store));
+        if (method === 'POST' && path === '/api/demo')
+          return await writeJson(201, () => seedDemo(store));
         if (
           method === 'GET' &&
           (path === '/api/search' || path === '/api/events' || path === '/api/export')
@@ -339,7 +374,7 @@ export function createLoomplaneServer(store: Store, options: ServerOptions = {})
           if (resource === 'streams' && !action) {
             if (method === 'GET') return respond(res, 200, store.getStreamState(entityId));
             if (method === 'PATCH')
-              return respond(res, 200, store.updateStream(entityId, await requestBody()));
+              return await writeJson(200, (input) => store.updateStream(entityId, input));
           }
           if (resource === 'capsules') {
             if (method === 'GET' && !action)
@@ -348,12 +383,9 @@ export function createLoomplaneServer(store: Store, options: ServerOptions = {})
                 revisions: store.getRevisions(entityId),
               });
             if (method === 'PATCH' && !action)
-              return respond(res, 200, store.reviseCapsule(entityId, await requestBody()));
+              return await writeJson(200, (input) => store.reviseCapsule(entityId, input));
             if (method === 'POST' && action === 'status') {
-              const input = await requestBody();
-              return respond(
-                res,
-                200,
+              return await writeJson(200, (input) =>
                 store.setCapsuleStatus(entityId, input.status, input.expectedVersion, input.author),
               );
             }

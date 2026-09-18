@@ -2,11 +2,22 @@ import { createHash } from 'node:crypto';
 import { readFile, realpath, stat } from 'node:fs/promises';
 import { resolve, relative, isAbsolute, sep } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import type { Store } from './store.js';
-import type { Evidence, SourceCheck, SourceFingerprint, Revision } from './types.js';
+import type {
+  Evidence,
+  SourceCheck,
+  SourceFingerprint,
+  Revision,
+  Packet,
+  Capsule,
+} from './types.js';
 import { invariant, LoomplaneError } from './errors.js';
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
+export interface SourceReader {
+  getPacket(id: string): Packet | Promise<Packet>;
+  listCapsules(projectId: string): Capsule[] | Promise<Capsule[]>;
+  getRevisions(capsuleId: string): Revision[] | Promise<Revision[]>;
+}
 function inside(root: string, path: string) {
   return path === root || path.startsWith(root + sep);
 }
@@ -56,7 +67,7 @@ export async function fingerprintSource(rootPath: string, filePath: string): Pro
 }
 /** Read-only check of exact packet revisions, or current project capsules. */
 export async function checkSources(
-  store: Store,
+  store: SourceReader,
   input: { root: string; packetId?: string; projectId?: string },
 ): Promise<SourceCheck> {
   invariant(
@@ -65,11 +76,11 @@ export async function checkSources(
   );
   const root = await realpath(resolve(input.root));
   const pending = input.packetId
-    ? store
-        .getPacket(input.packetId)
-        .manifest.map((m) => ({ capsuleId: m.capsuleId, version: m.version }))
-    : store
-        .listCapsules(input.projectId!)
+    ? (await store.getPacket(input.packetId)).manifest.map((m) => ({
+        capsuleId: m.capsuleId,
+        version: m.version,
+      }))
+    : (await store.listCapsules(input.projectId!))
         .filter((c) => c.status === 'active')
         .map((c) => ({ capsuleId: c.id, version: c.version }));
   const records: Revision[] = [];
@@ -80,7 +91,8 @@ export async function checkSources(
     const key = `${ref.capsuleId}@${ref.version}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    if (!history.has(ref.capsuleId)) history.set(ref.capsuleId, store.getRevisions(ref.capsuleId));
+    if (!history.has(ref.capsuleId))
+      history.set(ref.capsuleId, await store.getRevisions(ref.capsuleId));
     const revision = history.get(ref.capsuleId)!.find((r) => r.version === ref.version);
     invariant(revision, 'A referenced source revision is missing', 500, 'INVALID_HISTORY');
     records.push(revision);

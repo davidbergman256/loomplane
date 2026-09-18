@@ -13,7 +13,7 @@ import type { CapsuleKind, CapsuleStatus } from '../core/types.js';
 const program = new Command()
   .name('loomplane')
   .description('Shared, versioned context for parallel coding agents.')
-  .version('0.1.0')
+  .version('0.2.0')
   .option(
     '--db <path>',
     'SQLite database path',
@@ -133,30 +133,55 @@ program
 program
   .command('run <command...>')
   .description('Supply a context packet to an explicit command and check freshness when it exits')
-  .option('--stream <id>', 'Stream to compile; defaults to this workspace selection')
+  .option('--stream <id>', 'Stream to compile; local mode defaults to workspace selection')
+  .option('--url <url>', 'Use a shared server instead of local SQLite', process.env.LOOMPLANE_URL)
   .option('--task <text>', 'Task recorded in the packet', '')
   .option('--budget <tokens>', 'Estimated context budget', '4000')
   .option('--agent <name>', 'Receipt agent label; defaults to the command name')
-  .option('--root <path>', 'Also check fingerprinted source files under this root')
+  .option('--root <path>', 'Also check fingerprinted source files under this local root')
   .option('--keep-files', 'Retain private packet files after the command exits')
-  .action(async (command: string[], opts) =>
-    useStore(async (store) => {
-      const { runWithContext } = await import('../runner/run.js');
-      const result = await runWithContext(store, {
-        databasePath: storePath(),
-        streamId: selectedStream(storePath(), opts.stream),
-        task: opts.task,
-        budget: number(opts.budget),
-        agent: opts.agent,
-        command,
-        sourceRoot: opts.root,
-        keepFiles: opts.keepFiles,
-      });
+  .action(async (command: string[], opts) => {
+    const { runWithContext } = await import('../runner/run.js');
+    const input = {
+      task: opts.task,
+      budget: number(opts.budget),
+      agent: opts.agent,
+      command,
+      sourceRoot: opts.root,
+      keepFiles: opts.keepFiles,
+    };
+    const report = (result: Awaited<ReturnType<typeof runWithContext>>) => {
       // Child stdout remains usable for piping; execution metadata goes to stderr.
       process.stderr.write(JSON.stringify(result, null, 2) + '\n');
       process.exitCode = result.exitCode;
-    }),
-  );
+    };
+    if (opts.url) {
+      if (!opts.stream) throw new LoomplaneError('Remote run requires --stream');
+      const { LoomplaneClient } = await import('../sdk/client.js');
+      const { remoteRunnerPort } = await import('../runner/remote.js');
+      const client = new LoomplaneClient({
+        baseUrl: opts.url,
+        token: process.env.LOOMPLANE_API_TOKEN,
+      });
+      report(
+        await runWithContext(remoteRunnerPort(client), {
+          ...input,
+          serverUrl: client.baseUrl,
+          streamId: opts.stream,
+        }),
+      );
+    } else {
+      await useStore(async (store) => {
+        report(
+          await runWithContext(store, {
+            ...input,
+            databasePath: storePath(),
+            streamId: selectedStream(storePath(), opts.stream),
+          }),
+        );
+      });
+    }
+  });
 program
   .command('demo')
   .description('Seed the explicitly synthetic Orbit demonstration')

@@ -36,3 +36,19 @@
 - Added consistent multi-query SQLite read snapshots and rejection of future database schema versions before mutation. Verified an interleaved writer cannot produce a torn export.
 - Workbench browser checks exercised new compilation, historical comparison, revision details and mobile layout; inspected 390px layout had no document overflow.
 - Added a static, explicitly synthetic concept demo for GitHub Pages, repository contribution templates, third-party notices, and private vulnerability reporting.
+
+### Milestone: public distribution
+
+- GitHub Pages deployment and complete CI both passed on 9cfd206. Public demo: https://davidbergman256.github.io/loomplane/.
+- Published v0.1.0 as a GitHub prerelease with npm-compatible tarball and SHA-256 checksum. It is not published to the npm registry.
+- Installed the final tarball in a fresh directory and exercised init, remember, exact context hand-off and command receipt completion. Confirmed bundled workbench and license notices.
+- Began the next iteration on safe network write retries, with the implementation contract published to a separate local Loomplane development project and consumed through exact packets by two implementation streams. This is internal use, not customer validation.
+
+### Milestone: v0.2 shared-server reliability
+
+- Added credential-scoped safe retries for JSON POST/PATCH with canonical request fingerprints, historical status/body replay, 24-hour retention and bounded ledger results. Core writes and replay records commit atomically; nested writes use savepoints.
+- Added transactional schema-1→2 migration. Portable project format remains version 1 and excludes credentials/replay records. In-place downgrade is not supported.
+- Added shared-server command execution through an async runner port. Explicit source fingerprints are fetched as immutable metadata and checked only under the caller’s local root. No file contents are uploaded.
+- Verified independent-process contention commits one result/event, real concurrent HTTP replay, body conflict handling, revoked-key denial, old-schema migration, remote CLI hand-off and mid-run contract/source changes.
+- Internal development streams consumed the same cap_be17621e08284a3f@1 contract through separate exact packets and completed caller-reported receipts after checking those packets. This demonstrates protocol use, not that the context improved model output or prevented a defect.
+- Measured frozen v0.1 source with synthetic 100/500-capsule fixtures. At 500 capsules/30 streams, median snapshot time was 21.885 ms with 1,831,459 JSON bytes; this motivates a smaller workspace payload. See scaling-baseline.md for raw samples and limits.

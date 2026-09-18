@@ -38,3 +38,7 @@ Apache-2.0 core including local CLI, storage, protocol, UI, imports, versioning,
 ## Authorization and execution
 
 User explicitly requested autonomous decisions, a new GitHub repository, and execution without approval pauses. Old assessment is archived as superseded, not the design authority. Prioritize concrete product progress and cheap meaningful verification over test ceremony or generated line counts. Use independent agents on separated file ownership to work in parallel.
+
+## Shared-server write retries
+
+Version 0.2 adds an optional durable request ledger under SQLite schema version 2. A mutation and its replay record commit together, so retrying the same logical request does not create a second capsule, packet or receipt. Credentials are reauthorized on every replay. See [the idempotency contract](idempotency.md) for scope, retention, limits and migration behavior.

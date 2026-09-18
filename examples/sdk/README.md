@@ -57,3 +57,21 @@ mounts, compilation, packet reads and checks, search, events, export, impact,
 run receipts, and synthetic demo creation. `listStreams`, `listCapsules`,
 `listMounts`, and `getLatestPacket` are convenience reads assembled from the
 server's snapshot or stream-state endpoints.
+
+## Retry a logical write safely
+
+With a v0.2+ server, retain one unique key for each logical POST/PATCH operation:
+
+```ts
+const requestId = crypto.randomUUID();
+const input = {
+  projectId,
+  kind: 'constraint' as const,
+  title: 'Amount units',
+  body: 'Use integer minor units.',
+};
+const result = await client.publishCapsule(input, { idempotencyKey: requestId });
+// If the response was lost, retry this same input with this same requestId.
+```
+
+There are no automatic retries. Successful results are replayable for 24 hours under the same credential identity. Reusing the key with different input yields `IDEMPOTENCY_CONFLICT`; a replay returns the historical result, not current capsule state. Expired keys can execute again. Read and delete operations do not gain retry semantics from this option. See [the full contract](../../docs/specs/idempotency.md).
