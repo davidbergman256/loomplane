@@ -174,6 +174,16 @@ export interface Snapshot {
     mounts: number;
   };
 }
+export interface WorkspaceStream extends Pick<StreamState, 'stream' | 'drift' | 'conflicts'> {
+  ownedIds: string[];
+  mounts: Mount[];
+  latestPacket: PacketSummary | null;
+}
+export interface WorkspaceSnapshot extends Omit<Snapshot, 'streams'> {
+  format: 'loomplane.workspace';
+  version: 1;
+  streams: WorkspaceStream[];
+}
 export interface CreateProject {
   name: string;
   description?: string;

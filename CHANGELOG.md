@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 — compact workspace
+
+- The workbench uses a normalized workspace response with shared capsule references and packet summaries. Full immutable packets load when opened, with visible loading/errors and protection against obsolete selections.
+- Added `GET /api/workspace`, `Store.workspaceSnapshot`, and SDK `workspace` without changing legacy snapshot APIs. Project-scoped access rules remain the same.
+- A 500-capsule/30-stream synthetic fixture falls from 1,831,459 to 589,898 JSON bytes (67.8% smaller). This is a payload measurement, not a production capacity or database CPU claim.
+- Added a founder brief and reproducible comparison notes. Database schema remains version 2.
+
 ## 0.2.0 — shared-server reliability
 
 - Optional credential-scoped idempotency keys return the original result when a JSON POST/PATCH write is retried within 24 hours. Domain mutations and their replay records commit atomically, including across processes.

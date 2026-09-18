@@ -1,14 +1,8 @@
+import type { WorkspaceView } from './workspace';
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { ArrowRight, Link2, X } from 'lucide-react';
-import type {
-  Capsule,
-  CapsuleKind,
-  Packet,
-  Project,
-  Snapshot,
-  Stream,
-} from '../../../src/core/types';
+import type { Capsule, CapsuleKind, Packet, Project, Stream } from '../../../src/core/types';
 import { api } from './api';
 import DependencyEditor from './DependencyEditor';
 export type FormKind =
@@ -19,7 +13,7 @@ export type FormKind =
   | { type: 'compile'; streamId: string };
 interface Props {
   form: FormKind;
-  snapshot: Snapshot;
+  snapshot: WorkspaceView;
   onClose: () => void;
   onSaved: (result?: { projectId?: string; capsule?: Capsule; packet?: Packet }) => void;
 }

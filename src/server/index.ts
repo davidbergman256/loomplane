@@ -258,7 +258,7 @@ export function createLoomplaneServer(store: Store, options: ServerOptions = {})
         )
           throw new LoomplaneError('Use application/json', 415, 'CONTENT_TYPE');
         if (method === 'GET' && path === '/api/health')
-          return respond(res, 200, { ok: true, version: '0.2.0' });
+          return respond(res, 200, { ok: true, version: '0.3.0' });
         if (method === 'GET' && path === '/api/changes') {
           res.writeHead(200, {
             'Content-Type': 'text/event-stream',
@@ -287,6 +287,12 @@ export function createLoomplaneServer(store: Store, options: ServerOptions = {})
           if (principal)
             snapshot.projects = snapshot.projects.filter((p) => p.id === principal.projectId);
           return respond(res, 200, snapshot);
+        }
+        if (method === 'GET' && path === '/api/workspace') {
+          const workspace = store.workspaceSnapshot(projectId);
+          if (principal)
+            workspace.projects = workspace.projects.filter((p) => p.id === principal.projectId);
+          return respond(res, 200, workspace);
         }
         if (method === 'GET' && path === '/api/projects')
           return respond(

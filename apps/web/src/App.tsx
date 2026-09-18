@@ -1,3 +1,5 @@
+import { hydrateWorkspace } from './workspace';
+import type { WorkspaceView, StreamView } from './workspace';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Activity,
@@ -19,7 +21,7 @@ import {
   Terminal,
   X,
 } from 'lucide-react';
-import type { Packet, SearchHit, Snapshot, StreamState } from '../../../src/core/types';
+import type { Packet, SearchHit, WorkspaceSnapshot } from '../../../src/core/types';
 import { api, dateLabel, download, subscribeChanges } from './api';
 import { useAuth } from './Auth';
 import { Brand, CapsuleCard, Empty } from './components';
@@ -31,11 +33,11 @@ import StreamBoard, { CapsuleLibrary } from './StreamBoard';
 type View = 'streams' | 'library' | 'events' | 'guide';
 export default function App() {
   const auth = useAuth();
-  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [snapshot, setSnapshot] = useState<WorkspaceView | null>(null);
   const [projectId, setProjectId] = useState('');
   const [view, setView] = useState<View>('streams');
   const [streamFilter, setStreamFilter] = useState<string | null>(null);
-  const [selection, setSelection] = useState<Selection>(null);
+  const [selection, updateSelection] = useState<Selection>(null);
   const [form, setForm] = useState<FormKind | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -49,21 +51,30 @@ export default function App() {
   const [demoBusy, setDemoBusy] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const fetchSequence = useRef(0);
+  const selectionSequence = useRef(0);
+  const projectSequence = useRef(0);
+  const setSelection = useCallback((next: Selection) => {
+    selectionSequence.current += 1;
+    updateSelection(next);
+  }, []);
   const refresh = useCallback(
     async (id?: string) => {
+      const projectSeq = projectSequence.current;
       const seq = ++fetchSequence.current;
       try {
-        const data = await api<Snapshot>(
-          `/snapshot${id || projectId ? `?projectId=${encodeURIComponent(id || projectId)}` : ''}`,
+        const data = await api<WorkspaceSnapshot>(
+          `/workspace${id || projectId ? `?projectId=${encodeURIComponent(id || projectId)}` : ''}`,
         );
-        if (seq === fetchSequence.current) {
-          setSnapshot(data);
+        if (seq === fetchSequence.current && projectSeq === projectSequence.current) {
+          setSnapshot(hydrateWorkspace(data));
           setError('');
         }
       } catch (cause) {
-        if (seq === fetchSequence.current) setError((cause as Error).message);
+        if (seq === fetchSequence.current && projectSeq === projectSequence.current)
+          setError((cause as Error).message);
       } finally {
-        if (seq === fetchSequence.current) setLoading(false);
+        if (seq === fetchSequence.current && projectSeq === projectSequence.current)
+          setLoading(false);
       }
     },
     [projectId],
@@ -137,6 +148,11 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [notice]);
   function switchProject(id: string) {
+    projectSequence.current += 1;
+    fetchSequence.current += 1;
+    setSnapshot(null);
+    setLoading(true);
+    setForm(null);
     setProjectId(id);
     setSelection(null);
     setStreamFilter(null);
@@ -162,7 +178,9 @@ export default function App() {
       setDemoBusy(false);
     }
   }
-  async function refreshPacket(state: StreamState) {
+  async function refreshPacket(state: StreamView) {
+    const projectSeq = projectSequence.current;
+    const selectionSeq = selectionSequence.current;
     setRefreshing(state.stream.id);
     try {
       const packet = await api<Packet>('/compile', {
@@ -170,7 +188,8 @@ export default function App() {
         task: state.latestPacket?.task ?? '',
         budget: state.latestPacket?.budget ?? 4000,
       });
-      setSelection({ type: 'packet', packet });
+      if (projectSeq !== projectSequence.current) return;
+      if (selectionSeq === selectionSequence.current) setSelection({ type: 'packet', packet });
       await refresh();
       setNotice('New packet compiled. Review its preflight before use.');
     } catch (cause) {
@@ -202,6 +221,7 @@ export default function App() {
       setError((cause as Error).message);
     }
   }
+  const renderedProjectSequence = projectSequence.current;
   const project = snapshot?.project;
   const filteredStreams =
     snapshot?.streams.filter((s) => !streamFilter || s.stream.id === streamFilter) ?? [];
@@ -327,7 +347,7 @@ export default function App() {
           </button>
           <div className="sidebar-footnote">
             <span>{auth.required ? `${auth.role} access` : 'Open source'}</span>
-            {auth.required ? <button onClick={auth.logout}>Sign out</button> : <span>v0.2</span>}
+            {auth.required ? <button onClick={auth.logout}>Sign out</button> : <span>Preview</span>}
           </div>
         </div>
       </aside>
@@ -641,6 +661,7 @@ export default function App() {
           }
           onClose={() => setForm(null)}
           onSaved={(result) => {
+            if (renderedProjectSequence !== projectSequence.current) return;
             setForm(null);
             if (result?.projectId) switchProject(result.projectId);
             if (result?.capsule) setSelection({ type: 'capsule', id: result.capsule.id });

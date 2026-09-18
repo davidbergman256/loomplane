@@ -5,6 +5,7 @@ All endpoints below JSON, no /v1 prefix; base `/api`. Errors `{error: string, co
 | Method | Path                            | Body / result                                                              |
 | ------ | ------------------------------- | -------------------------------------------------------------------------- |
 | GET    | /api/health                     | `{ok:true,version:'0.2.0'}`                                                |
+| GET    | /api/workspace?projectId=ID     | `WorkspaceSnapshot`, compact capsule references and packet summaries       |
 | GET    | /api/snapshot?projectId=ID      | `Snapshot`, defaults first project                                         |
 | GET    | /api/projects                   | `Project[]`                                                                |
 | POST   | /api/projects                   | `CreateProject` → `Project`                                                |
@@ -23,7 +24,7 @@ All endpoints below JSON, no /v1 prefix; base `/api`. Errors `{error: string, co
 | GET    | /api/events?projectId=ID        | `AuditEvent[]` latest 100                                                  |
 | GET    | /api/export?projectId=ID        | portable project object                                                    |
 | POST   | /api/demo                       | `{projectId:string}`                                                       |
-| GET    | /api/changes                    | SSE `change` event with `{at:string}`, UI refetch snapshot                 |
+| GET    | /api/changes                    | SSE `change` event with `{at:string}`, UI refetch workspace                |
 
 Store constructor `new Store(path: string)` (`:memory:` works). Import `{ Store } from '../core/store.js'`.
 Methods synchronous:
@@ -35,7 +36,7 @@ Methods synchronous:
 - setCapsuleStatus(id,status,expectedVersion,author?): Capsule
 - mount(MountInput): Mount; unmount(mountId): void; listMounts(streamId): Mount[]
 - compile(CompileInput): Packet; getPacket(id): Packet; getLatestPacket(streamId): Packet|null
-- getStreamState(id): StreamState; snapshot(projectId?): Snapshot
+- getStreamState(id): StreamState; snapshot(projectId?): Snapshot; workspaceSnapshot(projectId?): WorkspaceSnapshot
 - search(projectId, query, limit?): SearchHit[]
 - events(projectId,limit?): AuditEvent[]; exportProject(projectId): object; close(): void
 - findBySource(projectId, sourceUri): Capsule|null for importer dedupe; import adapters can use this.
@@ -78,3 +79,7 @@ HTTP/MCP context checks validate database revisions; they do not read local file
 ## Retrying network writes
 
 Version 0.2 accepts optional `Idempotency-Key` on JSON POST/PATCH writes. A repeated operation/body under the same credential identity returns its original status/body and `Idempotency-Replayed: true`; its first commit returns `false`. A changed operation/body with the same active key is a 409 conflict. Keys expire after 24 hours. Authorization is checked on every replay, and failed writes do not reserve a key. DELETE with a key is rejected. The SDK's optional `idempotencyKey` sends this header for its POST/PATCH writes and adds no automatic retries. See [the complete replay and migration contract](idempotency.md).
+
+## Compact workbench reads
+
+`GET /api/workspace?projectId=ID` and SDK `workspace(projectId?, options?)` return the same current records as the legacy snapshot, with capsules serialized once and stream ownership/mounts referencing their IDs. Latest packets are honest `PacketSummary` values: opening a packet fetches its full immutable detail through the existing packet endpoint. The legacy snapshot contract remains unchanged. Project scoping and reader access match snapshot authorization. See [the workspace contract](workspace-payload.md) and [measured payload comparison](../workspace-payload-results.md).

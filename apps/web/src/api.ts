@@ -33,8 +33,14 @@ function headers(body?: unknown) {
 function unauthorized(response: Response) {
   if (response.status === 401) window.dispatchEvent(new Event('loomplane:unauthorized'));
 }
-export async function api<T>(path: string, body?: unknown, method?: string): Promise<T> {
+export async function api<T>(
+  path: string,
+  body?: unknown,
+  method?: string,
+  signal?: AbortSignal,
+): Promise<T> {
   const response = await fetch(`/api${path}`, {
+    signal,
     method: method ?? (body === undefined ? 'GET' : 'POST'),
     headers: headers(body),
     body: body === undefined ? undefined : JSON.stringify(body),

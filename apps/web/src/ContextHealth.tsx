@@ -1,3 +1,4 @@
+import type { WorkspaceView } from './workspace';
 import { useEffect, useState } from 'react';
 import {
   AlertTriangle,
@@ -9,14 +10,7 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react';
-import type {
-  Drift,
-  Impact,
-  Packet,
-  PacketCheck,
-  Receipt,
-  Snapshot,
-} from '../../../src/core/types';
+import type { Drift, Impact, Packet, PacketCheck, Receipt } from '../../../src/core/types';
 import { api, dateLabel } from './api';
 import { useAuth } from './Auth';
 import type { Selection } from './Inspector';
@@ -68,7 +62,7 @@ export function ImpactPanel({
   onSelect,
 }: {
   capsuleId: string;
-  snapshot: Snapshot;
+  snapshot: WorkspaceView;
   onSelect: (selection: Selection) => void;
 }) {
   const [impact, setImpact] = useState<Impact | null>(null);
@@ -163,14 +157,7 @@ export function ImpactPanel({
             {receipt.outcome && <p>{receipt.outcome}</p>}
             <button
               className="text-button"
-              onClick={async () => {
-                try {
-                  const packet = await api<Packet>(`/packets/${receipt.packetId}`);
-                  onSelect({ type: 'packet', packet });
-                } catch (cause) {
-                  setError((cause as Error).message);
-                }
-              }}
+              onClick={() => onSelect({ type: 'packetRef', id: receipt.packetId })}
             >
               Inspect packet
               <ArrowUpRight size={11} />
@@ -196,7 +183,7 @@ export function PacketPreflight({
   onChange,
 }: {
   packet: Packet;
-  snapshot: Snapshot;
+  snapshot: WorkspaceView;
   onSelect: (selection: Selection) => void;
   onChange: () => void;
 }) {

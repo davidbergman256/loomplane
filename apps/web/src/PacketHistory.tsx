@@ -84,13 +84,6 @@ export function PacketHistory({
       setLoading(false);
     }
   }
-  async function inspect(id: string) {
-    try {
-      onSelect({ type: 'packet', packet: await api<Packet>(`/packets/${id}`) });
-    } catch (cause) {
-      setError((cause as Error).message);
-    }
-  }
   return (
     <div className="packet-history">
       <p className="muted">
@@ -238,7 +231,7 @@ export function PacketHistory({
             <button
               key={item.id}
               disabled={item.id === packet.id}
-              onClick={() => void inspect(item.id)}
+              onClick={() => onSelect({ type: 'packetRef', id: item.id })}
             >
               <span>
                 <strong>{item.task || 'Untitled task'}</strong>

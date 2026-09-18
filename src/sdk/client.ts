@@ -21,6 +21,7 @@ import type {
   Snapshot,
   Stream,
   StreamState,
+  WorkspaceSnapshot,
 } from '../core/types.js';
 
 export interface LoomplaneClientOptions {
@@ -199,6 +200,10 @@ export class LoomplaneClient {
 
   snapshot(projectId?: string, options?: LoomplaneRequestOptions): Promise<Snapshot> {
     return this.request(query('/snapshot', { projectId }), {}, options);
+  }
+
+  workspace(projectId?: string, options?: LoomplaneRequestOptions): Promise<WorkspaceSnapshot> {
+    return this.request(query('/workspace', { projectId }), {}, options);
   }
 
   listProjects(options?: LoomplaneRequestOptions): Promise<Project[]> {

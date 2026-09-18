@@ -1,3 +1,4 @@
+import type { StreamView } from './workspace';
 import { useState } from 'react';
 import { useAuth } from './Auth';
 import {
@@ -11,7 +12,7 @@ import {
   Plus,
   RefreshCw,
 } from 'lucide-react';
-import type { Capsule, StreamState } from '../../../src/core/types';
+import type { Capsule } from '../../../src/core/types';
 import { CapsuleCard, Empty } from './components';
 import type { FormKind } from './Forms';
 import type { Selection } from './Inspector';
@@ -24,11 +25,11 @@ export default function StreamBoard({
   onDrop,
   refreshing,
 }: {
-  streams: StreamState[];
+  streams: StreamView[];
   selectedId?: string;
   onSelect: (selection: Selection) => void;
   onForm: (form: FormKind) => void;
-  onRefresh: (state: StreamState) => void;
+  onRefresh: (state: StreamView) => void;
   onDrop: (streamId: string, capsuleId: string) => void;
   refreshing: string | null;
 }) {
@@ -71,7 +72,7 @@ function StreamLane({
   onDrop,
   refreshing,
 }: {
-  state: StreamState;
+  state: StreamView;
   index: number;
   selectedId?: string;
   onSelect: (selection: Selection) => void;
@@ -274,13 +275,13 @@ function StreamLane({
         {latestPacket && (
           <button
             className="packet-summary"
-            onClick={() => onSelect({ type: 'packet', packet: latestPacket })}
+            onClick={() => onSelect({ type: 'packetRef', id: latestPacket.id })}
           >
             <FileText size={14} />
             <span>
               Latest packet
               <small>
-                {latestPacket.manifest.length} revisions · ~
+                {latestPacket.capsuleCount} revisions · ~
                 {latestPacket.estimatedTokens.toLocaleString()} tokens
               </small>
             </span>

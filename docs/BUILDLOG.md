@@ -52,3 +52,11 @@
 - Verified independent-process contention commits one result/event, real concurrent HTTP replay, body conflict handling, revoked-key denial, old-schema migration, remote CLI hand-off and mid-run contract/source changes.
 - Internal development streams consumed the same cap_be17621e08284a3f@1 contract through separate exact packets and completed caller-reported receipts after checking those packets. This demonstrates protocol use, not that the context improved model output or prevented a defect.
 - Measured frozen v0.1 source with synthetic 100/500-capsule fixtures. At 500 capsules/30 streams, median snapshot time was 21.885 ms with 1,831,459 JSON bytes; this motivates a smaller workspace payload. See scaling-baseline.md for raw samples and limits.
+
+### Milestone: compact workspace
+
+- Added normalized workspace reads across core, HTTP, SDK and workbench while preserving full snapshot compatibility. Shared capsule objects are sent once; full packets load on demand.
+- Same-state synthetic measurement: 500 capsules/30 streams fell from 1,831,459 to 589,898 JSON bytes (67.8% smaller). The initial implementation projects an existing full snapshot; no database CPU or production-capacity improvement is claimed.
+- Focused checks verified shape parity, project-scoped access, immutable packet detail, and read-only behavior. Browser checks exercised lazy loading, compile response reuse, history/diff, delayed-response selection and project races, recoverable packet-load errors, scoped readers and a 390px layout.
+- All three implementation streams consumed the same workspace contract through exact Loomplane packets and finished caller-reported receipts after a fresh preflight. Internal use remains distinct from customer or model-behavior evidence.
+- Added START_HERE.md to connect the usable product, open-source boundary, enterprise thesis, and next validation work.

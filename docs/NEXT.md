@@ -1,6 +1,6 @@
 # Next substantive milestones
 
-The 0.1 preview is a working local/shared-server context runtime. The following are prioritized product bets, not claims of completed functionality. Keep the active work tied to outcomes rather than code volume.
+The preview is a working local/shared-server context runtime. The following are prioritized product bets, not claims of completed functionality. Keep the active work tied to outcomes rather than code volume.
 
 ## 1. Zero-setup concept demo and distribution
 
@@ -16,7 +16,7 @@ Historical packet diffs and bounded packet history are implemented in the core, 
 
 ## 4. Operational foundation
 
-Packet history uses bounded insertion-order pagination, and composite reads now hold a coherent SQLite snapshot across concurrent clients. Version 0.2 adds credential-scoped write replay and a transactional schema-1→2 migration. Extend pagination to other growing lists and test portable compatibility across future versions. The [v0.1 baseline](scaling-baseline.md) measured a 1.83 MB snapshot at 500 capsules/30 streams. Prioritize normalized workspace payloads and lazy packet details, then measure the change before choosing a new database. Replace recursive graph traversal with bounded iterative traversal as larger graphs are supported. Basic safety, backup and scoped credentials stay open source.
+Packet history uses bounded insertion-order pagination, and composite reads now hold a coherent SQLite snapshot across concurrent clients. Version 0.2 adds credential-scoped write replay and a transactional schema-1→2 migration. Extend pagination to other growing lists and test portable compatibility across future versions. The [v0.1 baseline](scaling-baseline.md) measured a 1.83 MB snapshot at 500 capsules/30 streams. Normalized workspace payloads and lazy packet details now reduce that fixture to 590 KB (67.8% smaller); see [the comparison](workspace-payload-results.md). Next, profile repeated per-stream queries before choosing a new database. Replace recursive graph traversal with bounded iterative traversal as larger graphs are supported. Basic safety, backup and scoped credentials stay open source.
 
 ## 5. Enterprise validation
 

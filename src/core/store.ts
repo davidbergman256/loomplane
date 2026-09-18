@@ -7,6 +7,7 @@ import { invariant, requiredText, LoomplaneError } from './errors.js';
 import { validatePortableProject } from './portable.js';
 import { comparePacketSnapshots } from './packet-diff.js';
 import { serializeIdempotencyResult } from './idempotency.js';
+import { compactSnapshot, summarizePacket } from './workspace.js';
 import type {
   AuditEvent,
   Capsule,
@@ -28,6 +29,7 @@ import type {
   ReviseCapsule,
   SearchHit,
   Snapshot,
+  WorkspaceSnapshot,
   Stream,
   StreamState,
   Receipt,
@@ -803,21 +805,7 @@ export class Store {
                 'SELECT data FROM packets WHERE stream_id=? AND rowid<? ORDER BY rowid DESC LIMIT ?',
               )
               .all(streamId, before, limit + 1);
-      const items = rows.slice(0, limit).map((row) => {
-        const p = parse<Packet>(row);
-        return {
-          id: p.id,
-          projectId: p.projectId,
-          streamId: p.streamId,
-          task: p.task,
-          budget: p.budget,
-          estimatedTokens: p.estimatedTokens,
-          createdAt: p.createdAt,
-          capsuleCount: p.manifest.length,
-          omittedCount: p.omitted.length,
-          conflictCount: p.conflicts.length,
-        };
-      });
+      const items = rows.slice(0, limit).map((row) => summarizePacket(parse<Packet>(row)));
       return { items, nextCursor: rows.length > limit ? items.at(-1)!.id : null };
     });
   }
@@ -1107,6 +1095,9 @@ export class Store {
         },
       };
     });
+  }
+  workspaceSnapshot(projectId?: string): WorkspaceSnapshot {
+    return compactSnapshot(this.snapshot(projectId));
   }
   search(projectId: string, query: string, limit = 30): SearchHit[] {
     return this.readSnapshot(() => {

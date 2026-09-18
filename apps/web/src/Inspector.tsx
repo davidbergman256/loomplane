@@ -1,3 +1,4 @@
+import type { WorkspaceView } from './workspace';
 import { useEffect, useState } from 'react';
 import { useAuth } from './Auth';
 import {
@@ -14,15 +15,90 @@ import {
   Unlink,
   X,
 } from 'lucide-react';
-import type { Capsule, Packet, Revision, Snapshot } from '../../../src/core/types';
+import type { Capsule, Packet, Revision } from '../../../src/core/types';
 import { api, dateLabel, download } from './api';
 import { ExternalEvidence, Kind } from './components';
 import type { FormKind } from './Forms';
 import { ImpactPanel, PacketPreflight } from './ContextHealth';
 import { PacketHistory } from './PacketHistory';
 export type Selection =
-  { type: 'capsule'; id: string; version?: number } | { type: 'packet'; packet: Packet } | null;
-export default function Inspector({
+  | { type: 'capsule'; id: string; version?: number }
+  | { type: 'packet'; packet: Packet }
+  | { type: 'packetRef'; id: string }
+  | null;
+interface InspectorProps {
+  selection: Selection;
+  snapshot: WorkspaceView;
+  onClose: () => void;
+  onForm: (form: FormKind) => void;
+  onError: (message: string) => void;
+  onChange: () => void;
+  onSelect: (selection: Selection) => void;
+}
+export default function Inspector(props: InspectorProps) {
+  const { selection, snapshot } = props;
+  if (selection?.type === 'packetRef') {
+    return (
+      <LazyPacketInspector
+        key={`${snapshot.project?.id}:${selection.id}`}
+        {...props}
+        packetId={selection.id}
+      />
+    );
+  }
+  const key =
+    selection?.type === 'packet'
+      ? selection.packet.id
+      : selection?.type === 'capsule'
+        ? `${selection.id}:${selection.version ?? 'latest'}`
+        : 'idle';
+  return <InspectorContent key={key} {...props} />;
+}
+function LazyPacketInspector(props: InspectorProps & { packetId: string }) {
+  const [packet, setPacket] = useState<Packet | null>(null);
+  const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    setError('');
+    api<Packet>(`/packets/${props.packetId}`, undefined, undefined, controller.signal)
+      .then((value) => {
+        if (!controller.signal.aborted) setPacket(value);
+      })
+      .catch((cause) => {
+        if (!controller.signal.aborted) setError(cause.message);
+      });
+    return () => controller.abort();
+  }, [props.packetId, attempt]);
+  if (packet) return <InspectorContent {...props} selection={{ type: 'packet', packet }} />;
+  return (
+    <aside className="inspector open" aria-busy={!error}>
+      <div className="inspector-head">
+        <span>Compiled context</span>
+        <button className="icon-button" aria-label="Close inspector" onClick={props.onClose}>
+          <X size={17} />
+        </button>
+      </div>
+      <div className="inspector-body">
+        {error ? (
+          <>
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+            <button className="button secondary" onClick={() => setAttempt((value) => value + 1)}>
+              Retry packet
+            </button>
+          </>
+        ) : (
+          <p className="muted" role="status">
+            Loading the exact packet and its revision manifest…
+          </p>
+        )}
+      </div>
+    </aside>
+  );
+}
+function InspectorContent({
   selection,
   snapshot,
   onClose,
@@ -30,15 +106,7 @@ export default function Inspector({
   onError,
   onChange,
   onSelect,
-}: {
-  selection: Selection;
-  snapshot: Snapshot;
-  onClose: () => void;
-  onForm: (form: FormKind) => void;
-  onError: (message: string) => void;
-  onChange: () => void;
-  onSelect: (selection: Selection) => void;
-}) {
+}: InspectorProps) {
   const { canWrite } = useAuth();
   const [tab, setTab] = useState('context');
   const [revisions, setRevisions] = useState<Revision[]>([]);
@@ -406,7 +474,7 @@ function PacketInspector({
   copied: boolean;
   onCopy: () => void;
   onSelect: (selection: Selection) => void;
-  snapshot: Snapshot;
+  snapshot: WorkspaceView;
   onChange: () => void;
 }) {
   const [tab, setTab] = useState('manifest');

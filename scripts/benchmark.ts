@@ -31,7 +31,7 @@ const cases = {
   medium: { capsules: 500, streams: 30 },
 } as const;
 type CaseName = keyof typeof cases;
-type Operation = 'compile' | 'packetCheck' | 'snapshot' | 'impact' | 'export';
+type Operation = 'compile' | 'packetCheck' | 'snapshot' | 'workspace' | 'impact' | 'export';
 interface Sample {
   operationMs: number;
   serializationMs: number;
@@ -237,6 +237,8 @@ async function worker() {
       ['impact', () => store!.impact(data.capsules[0].id)],
       ['export', () => store!.exportProject(data.project.id)],
     ];
+    if (typeof store.workspaceSnapshot === 'function')
+      operations.splice(3, 0, ['workspace', () => store!.workspaceSnapshot(data.project.id)]);
     const summaries: Record<string, unknown> = {};
     let readVersion = 0;
     for (const [operation, run] of operations) {
@@ -283,6 +285,15 @@ async function worker() {
           if (operation === 'snapshot') {
             const snapshot = result as ReturnType<StoreType['snapshot']>;
             summaries.snapshot = { ...snapshot.stats, eventsReturned: snapshot.events.length };
+          }
+          if (operation === 'workspace') {
+            const workspace = result as ReturnType<StoreType['workspaceSnapshot']>;
+            summaries.workspace = {
+              ...workspace.stats,
+              eventsReturned: workspace.events.length,
+              format: workspace.format,
+              version: workspace.version,
+            };
           }
           if (operation === 'impact') {
             const impact = result as ReturnType<StoreType['impact']>;

@@ -20,14 +20,16 @@ Loomplane is an early, working open-source prototype. It is not an autonomous co
 
 ![Loomplane workbench showing two consumers affected by a changed API contract](docs/assets/loomplane-workbench.png)
 
+For the product and business overview, start with [the founder brief](START_HERE.md).
+
 ## Quick start
 
 Requires **Node.js 24+**. SQLite is bundled with Node; no database service is needed.
 
-Install the [published preview](https://github.com/davidbergman256/loomplane/releases/tag/v0.2.0):
+Install the [published preview](https://github.com/davidbergman256/loomplane/releases/tag/v0.3.0):
 
 ```sh
-npm install -g https://github.com/davidbergman256/loomplane/releases/download/v0.2.0/loomplane-0.2.0.tgz
+npm install -g https://github.com/davidbergman256/loomplane/releases/download/v0.3.0/loomplane-0.3.0.tgz
 loomplane demo
 loomplane serve
 ```
@@ -218,7 +220,7 @@ The commercial thesis is operating shared context across an organization: manage
 
 ## Current limits
 
-A [reproducible local baseline](docs/scaling-baseline.md) measured the shipped v0.1 core at 100 and 500 synthetic capsules. It identifies whole-workspace payloads as a concrete next optimization; it is not a production capacity claim.
+A [reproducible local baseline](docs/scaling-baseline.md) measured the shipped v0.1 core at 100 and 500 synthetic capsules. The compact workspace response now reduces the 500-capsule fixture from 1.83 MB to 590 KB; [comparison details](docs/workspace-payload-results.md) explain the measurement and its limits. This is not a production capacity claim.
 
 - Single-node SQLite, no cloud synchronization, enterprise identity, or source-document permission inheritance.
 - Optional scoped service credentials provide project-level reader/writer access. They are not per-person identity, document-level authorization, or proof of production hardening. `LOOMPLANE_TOKEN` is a separate optional instance-wide administrator secret.

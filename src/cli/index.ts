@@ -13,7 +13,7 @@ import type { CapsuleKind, CapsuleStatus } from '../core/types.js';
 const program = new Command()
   .name('loomplane')
   .description('Shared, versioned context for parallel coding agents.')
-  .version('0.2.0')
+  .version('0.3.0')
   .option(
     '--db <path>',
     'SQLite database path',

@@ -28,4 +28,5 @@ jobs:
       - run: npm run smoke:consistency
       - run: npm run smoke:idempotency
       - run: npm run smoke:remote-runner
+      - run: npm run smoke:workspace
       - run: npm run build
